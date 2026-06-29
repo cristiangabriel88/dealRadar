@@ -62,9 +62,9 @@
           listing{{ '' if comparables|length == 1 else 's' }} this deal was valued against)</span></h2>
 
         {% if comparables %}
-        <div class="deals">
+        <div class="comp-list">
           {% for c in comparables %}
-          <article class="card">
+          <article class="card comp-row">
             <div class="thumb">
               {% if c.thumbnail %}
                 <img src="{{ c.thumbnail }}" alt="" loading="lazy">

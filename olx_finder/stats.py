@@ -31,7 +31,7 @@ from olx_finder.parsing import (
 )
 
 # Preferred order when the same item is reposted across sites: keep the first.
-_SOURCE_PRIORITY = ["OLX", "Publi24", "Lajumate", "Anuntul"]
+_SOURCE_PRIORITY = ["OLX", "Publi24", "Lajumate", "Anuntul", "biklo.ro"]
 
 # Constant from the modified z-score definition (0.6745 ≈ 1 / Φ⁻¹(0.75)),
 # which scales MAD to be consistent with the standard deviation for normal data.

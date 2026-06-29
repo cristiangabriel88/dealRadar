@@ -13,6 +13,7 @@ import config
 from olx_finder.models import Listing, _fmt
 from olx_finder.sources import (
     AnuntulSource,
+    BikloSource,
     LajumateSource,
     OlxSource,
     Publi24Source,
@@ -54,6 +55,19 @@ DEFAULT_SOURCES = ["OLX"]
 # Facebook Marketplace needs a logged-in browser session (Playwright); deferred.
 DISABLED_SOURCES = {"Facebook Marketplace": "coming soon"}
 
+# Product-specific marketplaces: only shown (and only sensible) for a given
+# product type. biklo.ro is a bike-only marketplace, so its checkbox appears
+# only when "Bikes" is the selected product. The general SOURCES above apply to
+# every product.
+PRODUCT_SOURCES = {"Bikes": {"biklo.ro": BikloSource}}
+
+# Flat name -> class registry spanning general + product-specific sources, used
+# to resolve whatever the user selected when fetching.
+ALL_SOURCES = {
+    **SOURCES,
+    **{name: cls for srcs in PRODUCT_SOURCES.values() for name, cls in srcs.items()},
+}
+
 # Product types are fixed to bikes for now; the query is derived from this.
 PRODUCT_TYPES = {"Bikes": config.DEFAULT_QUERY}
 
@@ -68,11 +82,11 @@ def aggregate(
     whole search, so deals from the sites that succeeded are still shown. Each
     listing is stamped with its source name before pooling.
     """
-    names = [s for s in selected_sources if s in SOURCES] or DEFAULT_SOURCES
+    names = [s for s in selected_sources if s in ALL_SOURCES] or DEFAULT_SOURCES
 
     def fetch(name: str) -> tuple[str, list[Listing] | None, str | None]:
         try:
-            listings = SOURCES[name]().search(query, city)
+            listings = ALL_SOURCES[name]().search(query, city)
             for lst in listings:
                 lst.source = name
             return name, listings, None
@@ -105,11 +119,13 @@ def index() -> str:
     # Form state (defaults on first load; Bucharest is preselected).
     default_city = config.DEFAULT_CITY if config.DEFAULT_CITY in config.CITIES else cities[0]
     selected_city = request.form.get("city", default_city)
-    # Source is now a multi-select checkbox group; default to OLX on first load.
+    # Source is a multi-select checkbox group. First load starts with a clean
+    # slate (nothing checked, no search run); the user picks sources or "Select
+    # all". On POST an empty selection still falls back to DEFAULT_SOURCES.
     if request.method == "POST":
         selected_sources = request.form.getlist("source") or DEFAULT_SOURCES
     else:
-        selected_sources = list(DEFAULT_SOURCES)
+        selected_sources = []
     selected_product = request.form.get("product", "Bikes")
     selected_mode = request.form.get("mode", config.DEFAULT_GROUPING_MODE)
     # Checkbox: checked => match by brand+model (default). On POST its absence
@@ -125,6 +141,7 @@ def index() -> str:
         "modes": modes,
         "sources": list(SOURCES),
         "disabled_sources": DISABLED_SOURCES,
+        "product_sources": {p: list(srcs) for p, srcs in PRODUCT_SOURCES.items()},
         "product_types": list(PRODUCT_TYPES),
         "selected_city": selected_city,
         "selected_sources": selected_sources,

@@ -80,12 +80,19 @@ main { max-width: 1180px; margin: 0 auto; padding: 8px 32px 64px; }
 .field .checkbox span { display: flex; flex-direction: column; line-height: 1.2; }
 .field .checkbox small { color: var(--muted); font-size: 11px; }
 
-/* multi-select source checkboxes */
+/* multi-select source checkboxes, grouped */
 .field.sources { min-width: 220px; }
-.field.sources .source-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.field.sources .source-list { display: flex; flex-direction: column; gap: 10px; }
+.field.sources .source-group { display: flex; flex-direction: column; gap: 6px; }
+.field.sources .group-label {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted);
+}
+.field.sources .group-items { display: flex; flex-wrap: wrap; gap: 8px; }
+.field.sources .select-all { align-self: flex-start; font-weight: 600; }
 .field.sources .checkbox { height: auto; padding: 7px 11px; font-size: 14px; gap: 8px; }
 .field.sources .checkbox.disabled { opacity: .5; cursor: not-allowed; }
 .field.sources .checkbox.disabled input { cursor: not-allowed; }
+.field .checkbox[hidden], .source-group[hidden] { display: none; }
 
 /* ---- post-search filter bar ---- */
 .filterbar {
@@ -125,6 +132,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 8px 32px 64px; }
   margin-bottom: 40px;
 }
 .card {
+  position: relative;
   background: var(--panel); border: 1px solid var(--line);
   border-radius: var(--radius); overflow: hidden;
   display: flex; flex-direction: column;
@@ -152,6 +160,15 @@ main { max-width: 1180px; margin: 0 auto; padding: 8px 32px 64px; }
   border: 1px solid var(--line); font-size: 11px; font-weight: 600;
 }
 .body { padding: 14px 15px 16px; display: flex; flex-direction: column; gap: 10px; }
+
+/* Comparable listings: single-column row list (image left, content right). */
+.comp-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 40px; }
+.comp-row { flex-direction: row; align-items: stretch; }
+.comp-row .thumb {
+  flex: 0 0 160px; width: 160px; aspect-ratio: auto; align-self: stretch;
+}
+.comp-row .thumb img { width: 100%; height: 100%; object-fit: cover; }
+.comp-row .body { flex: 1 1 auto; min-width: 0; justify-content: center; }
 .title { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.35; }
 .price { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; }
 .price .cur { font-size: 13px; color: var(--muted); font-weight: 600; }

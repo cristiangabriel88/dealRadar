@@ -40,17 +40,43 @@
       <div class="field sources">
         <label>Sources</label>
         <div class="source-list">
-          {% for s in sources %}
-          <label class="checkbox">
-            <input type="checkbox" name="source" value="{{ s }}" {{ 'checked' if s in selected_sources }}>
-            <span>{{ s }}</span>
+          <label class="checkbox select-all">
+            <input type="checkbox" id="select-all-sources">
+            <span>Select all</span>
           </label>
-          {% endfor %}
-          {% for s, note in disabled_sources.items() %}
-          <label class="checkbox disabled" title="{{ note }}">
-            <input type="checkbox" disabled>
-            <span>{{ s }}<small>{{ note }}</small></span>
-          </label>
+
+          <div class="source-group">
+            <span class="group-label">General</span>
+            <div class="group-items">
+              {% for s in sources %}
+              <label class="checkbox">
+                <input type="checkbox" name="source" value="{{ s }}" {{ 'checked' if s in selected_sources }}>
+                <span>{{ s }}</span>
+              </label>
+              {% endfor %}
+              {% for s, note in disabled_sources.items() %}
+              <label class="checkbox disabled" title="{{ note }}">
+                <input type="checkbox" disabled>
+                <span>{{ s }}<small>{{ note }}</small></span>
+              </label>
+              {% endfor %}
+            </div>
+          </div>
+
+          {# Product-specific sources: whole group shown only when its product is selected. #}
+          {% for product, srcs in product_sources.items() %}
+          <div class="source-group product-group" data-product="{{ product }}"
+               {{ 'hidden' if product != selected_product }}>
+            <span class="group-label">{{ product }}</span>
+            <div class="group-items">
+              {% for s in srcs %}
+              <label class="checkbox product-source">
+                <input type="checkbox" name="source" value="{{ s }}" {{ 'checked' if s in selected_sources }}>
+                <span>{{ s }}</span>
+              </label>
+              {% endfor %}
+            </div>
+          </div>
           {% endfor %}
         </div>
       </div>
@@ -213,6 +239,67 @@
   <footer>
     <p>Local tool · data from selected marketplaces · thresholds in <code>config.py</code></p>
   </footer>
+
+  <script>
+  // Source checkbox group behaviour:
+  //  * Product-specific groups (e.g. the "Bikes" group with biklo.ro) are shown
+  //    only when their product is selected. The product <select> doesn't reload
+  //    the page, so this toggles the whole group client-side.
+  //  * "Select all" checks/unchecks every enabled, currently-visible source and
+  //    reflects partial selections as an indeterminate state.
+  (function () {
+    var product = document.getElementById("product");
+    var groups = document.querySelectorAll(".product-group");
+    var selectAll = document.getElementById("select-all-sources");
+
+    // Enabled source checkboxes that are currently visible (hidden groups excluded).
+    function sourceBoxes() {
+      return Array.prototype.slice
+        .call(document.querySelectorAll(".source-list input[name=source]"))
+        .filter(function (b) { return !b.disabled && b.offsetParent !== null; });
+    }
+
+    function syncProduct() {
+      if (!product) return;
+      groups.forEach(function (g) {
+        var hide = g.dataset.product !== product.value;
+        g.hidden = hide;
+        // Don't submit a product-specific source for the wrong product.
+        if (hide) {
+          g.querySelectorAll("input[type=checkbox]").forEach(function (box) {
+            box.checked = false;
+          });
+        }
+      });
+    }
+
+    function syncSelectAll() {
+      if (!selectAll) return;
+      var boxes = sourceBoxes();
+      var checked = boxes.filter(function (b) { return b.checked; }).length;
+      selectAll.checked = boxes.length > 0 && checked === boxes.length;
+      selectAll.indeterminate = checked > 0 && checked < boxes.length;
+    }
+
+    if (selectAll) {
+      selectAll.addEventListener("change", function () {
+        sourceBoxes().forEach(function (b) { b.checked = selectAll.checked; });
+        selectAll.indeterminate = false;
+      });
+    }
+
+    document.querySelectorAll(".source-list input[name=source]").forEach(function (b) {
+      b.addEventListener("change", syncSelectAll);
+    });
+
+    if (product) {
+      product.addEventListener("change", function () { syncProduct(); syncSelectAll(); });
+    }
+
+    syncProduct();
+    syncSelectAll();
+  })();
+  </script>
 
   <script>
   // Post-search filtering of the flagged deal cards by brand and model.

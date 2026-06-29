@@ -179,6 +179,15 @@ LAJUMATE_BICYCLES_URL: str = (
 ANUNTUL_BASE: str = "https://www.anuntul.ro"
 ANUNTUL_SEARCH_URL: str = "https://www.anuntul.ro/anunturi/"
 
+# Biklo: a bike-only marketplace (Next.js front-end backed by a clean Laravel
+# JSON API). Its "bazar" classifieds expose a per-category, page-based endpoint;
+# we hit the whole-bikes ("biciclete") category directly and filter to the
+# selected city client-side. Listing prices are always in RON. Images are served
+# from the storage path on the same admin host.
+BIKLO_BASE: str = "https://www.biklo.ro"
+BIKLO_BICYCLES_URL: str = "https://admin.dirtbike.ro/api/bazar-ads-elastic/biciclete"
+BIKLO_IMAGE_BASE: str = "https://admin.dirtbike.ro/storage/"
+
 # Default search query (product type is fixed to bikes for now).
 DEFAULT_QUERY: str = "bicicleta"
 

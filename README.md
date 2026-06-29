@@ -149,3 +149,7 @@ To add Publi24 or another site, subclass it, implement
 `search(query, city) -> list[Listing]` (returning normalized `Listing` objects)
 and `supported_cities()`, then register it in `app.py`'s `SOURCES`. Nothing in
 parsing, stats, or the UI needs to change.
+
+A site that only makes sense for one product type (e.g. the bike-only
+`biklo.ro`) goes in `PRODUCT_SOURCES` instead, keyed by product. Its checkbox
+then appears only when that product is selected in the dropdown.

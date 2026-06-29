@@ -5,6 +5,7 @@ from olx_finder.sources.olx import OlxSource
 from olx_finder.sources.publi24 import Publi24Source
 from olx_finder.sources.lajumate import LajumateSource
 from olx_finder.sources.anuntul import AnuntulSource
+from olx_finder.sources.biklo import BikloSource
 
 __all__ = [
     "MarketplaceSource",
@@ -13,4 +14,5 @@ __all__ = [
     "Publi24Source",
     "LajumateSource",
     "AnuntulSource",
+    "BikloSource",
 ]
