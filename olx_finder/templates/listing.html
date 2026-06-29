@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% if deal %}{{ deal.listing.title }} — {% endif %}Deal Finder</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">◎</span>
+      <div>
+        <h1>Deal Finder</h1>
+        <p class="tagline">A flagged listing and the comparables behind it.</p>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <a class="back" href="{{ url_for('index') }}">← New search</a>
+
+    {% if error %}
+      <div class="notice error">⚠ Could not load this listing: {{ error }}</div>
+    {% elif deal is none %}
+      <div class="notice">
+        This listing is no longer available, or the search results have expired.
+        <a href="{{ url_for('index') }}">Start a new search</a>.
+      </div>
+    {% else %}
+      <section class="detail-hero">
+        <div class="thumb">
+          {% if deal.listing.thumbnail %}
+            <img src="{{ deal.listing.thumbnail }}" alt="">
+          {% else %}
+            <div class="noimg">no photo</div>
+          {% endif %}
+          <span class="badge">−{{ (deal.percent_below * 100)|round|int }}%</span>
+          {% if deal.is_cheapest_in_group %}<span class="badge cheapest">cheapest</span>{% endif %}
+        </div>
+        <div class="body">
+          <h2 class="title">{{ deal.listing.title }}</h2>
+          <div class="price">{{ deal.listing.price|lei }} <span class="cur">{{ deal.listing.currency }}</span></div>
+          <div class="stats">
+            <div><span class="k">Usual price</span><span class="v">{{ deal.median|lei }} {{ deal.listing.currency }}</span></div>
+            <div><span class="k">Typical range</span><span class="v">{{ deal.low|lei }}–{{ deal.high|lei }}</span></div>
+            <div><span class="k">Comparables</span><span class="v">{{ deal.sample_size }} listings</span></div>
+            <div><span class="k">Group</span><span class="v">{{ deal.group.brand }}{% if not deal.group.model.startswith('(') %} {{ deal.group.model }}{% endif %}</span></div>
+          </div>
+          <p class="why">{{ deal.explanation }}</p>
+          <div class="meta">
+            <span>{{ deal.listing.city }}</span>
+            {% if deal.listing.posted_at %}<span>{{ deal.listing.posted_at.strftime('%Y-%m-%d') }}</span>{% endif %}
+          </div>
+          <a class="open" href="{{ deal.listing.url }}" target="_blank" rel="noopener">Open on {{ deal.listing.source or 'site' }} ↗</a>
+        </div>
+      </section>
+
+      <section class="breakdown">
+        <h2>Comparable listings <span class="hint">(the {{ comparables|length }} other
+          {{ deal.group.brand }}{% if not deal.group.model.startswith('(') %} {{ deal.group.model }}{% endif %}
+          listing{{ '' if comparables|length == 1 else 's' }} this deal was valued against)</span></h2>
+
+        {% if comparables %}
+        <div class="deals">
+          {% for c in comparables %}
+          <article class="card">
+            <div class="thumb">
+              {% if c.thumbnail %}
+                <img src="{{ c.thumbnail }}" alt="" loading="lazy">
+              {% else %}
+                <div class="noimg">no photo</div>
+              {% endif %}
+            </div>
+            <div class="body">
+              <h3 class="title">{{ c.title }}</h3>
+              <div class="price">{{ c.price|lei }} <span class="cur">{{ c.currency }}</span></div>
+              <div class="meta">
+                <span>{{ c.city }}</span>
+                {% if c.posted_at %}<span>{{ c.posted_at.strftime('%Y-%m-%d') }}</span>{% endif %}
+              </div>
+              <a class="open" href="{{ c.url }}" target="_blank" rel="noopener">Open on {{ c.source or 'site' }} ↗</a>
+            </div>
+          </article>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="notice">No other comparables in this group.</div>
+        {% endif %}
+      </section>
+    {% endif %}
+  </main>
+
+  <footer>
+    <p>Local tool · data from selected marketplaces · thresholds in <code>config.py</code></p>
+  </footer>
+</body>
+</html>

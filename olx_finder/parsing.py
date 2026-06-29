@@ -1,0 +1,195 @@
+"""Title normalization and brand/model extraction.
+
+The marketplace pre-tags a brand on only a minority of listings, so the title
+parser is the primary source of brand/model. We normalize hard (lowercase,
+strip Romanian diacritics, collapse spacing/punctuation) before matching.
+"""
+
+from __future__ import annotations
+
+import re
+import unicodedata
+
+import config
+
+# Romanian diacritics -> ASCII. unicodedata handles the combining-mark cases,
+# but we map the precomposed ones explicitly for clarity and to cover the
+# comma-below vs cedilla variants of ș/ț.
+_DIACRITIC_MAP = str.maketrans(
+    {
+        "ă": "a", "â": "a", "î": "i", "ș": "s", "ş": "s", "ț": "t", "ţ": "t",
+        "Ă": "a", "Â": "a", "Î": "i", "Ș": "s", "Ş": "s", "Ț": "t", "Ţ": "t",
+    }
+)
+
+_NON_ALNUM = re.compile(r"[^a-z0-9' ]+")
+_MULTISPACE = re.compile(r"\s+")
+
+
+def normalize(text: str) -> str:
+    """Lowercase, strip diacritics, and collapse spacing/punctuation.
+
+    >>> normalize("GT Avalanche  3.0 — stare bună!")
+    "gt avalanche 3 0 stare buna"
+    """
+    if not text:
+        return ""
+    text = text.translate(_DIACRITIC_MAP)
+    # Decompose any remaining accented chars and drop combining marks.
+    text = "".join(
+        c for c in unicodedata.normalize("NFKD", text) if not unicodedata.combining(c)
+    )
+    text = text.lower()
+    # Keep apostrophes (for "b'twin") and digits; turn everything else to space.
+    text = _NON_ALNUM.sub(" ", text)
+    return _MULTISPACE.sub(" ", text).strip()
+
+
+# Precompute a normalized alias -> canonical brand map, longest aliases first so
+# multi-word brands ("rock rider") win over their single-word substrings.
+def _build_alias_index() -> list[tuple[str, str]]:
+    pairs: list[tuple[str, str]] = []
+    for canonical, aliases in config.BRANDS.items():
+        seen: set[str] = set()
+        for alias in [canonical, *aliases]:
+            norm = normalize(alias)
+            if norm and norm not in seen:
+                seen.add(norm)
+                pairs.append((norm, canonical))
+    # Longest alias first to prefer the most specific match.
+    pairs.sort(key=lambda p: len(p[0]), reverse=True)
+    return pairs
+
+
+_ALIAS_INDEX = _build_alias_index()
+
+# Tokens that are never a model (units, common descriptors, sizes).
+_MODEL_STOPWORDS = frozenset(
+    {
+        "mtb", "full", "suspension", "hardtail", "carbon", "aluminiu", "alu",
+        "noua", "nou", "noi", "stare", "buna", "foarte", "ca", "si", "cu",
+        "de", "in", "la", "pentru", "copii", "copil", "dama", "barbati",
+        "femei", "baieti", "fete", "second", "hand", "import", "germania",
+        "electrica", "electric", "ebike", "e", "bike", "bicicleta", "mountain",
+        "cursiera", "city", "trekking", "gravel", "bmx", "downhill", "enduro",
+        "viteze", "inch", "marimea", "marime", "roti", "roata",
+    }
+)
+
+# A model token: an alphanumeric word, optionally with a trailing number group
+# (e.g. "marlin", "7", "540", "avalanche"). We accept 1-2 trailing tokens after
+# the brand so "Marlin 7" and "Rockrider 540" are captured but long descriptive
+# tails are not swallowed.
+_WORD = re.compile(r"[a-z0-9]+")
+
+
+def _extract_model(norm_title: str, alias: str) -> str | None:
+    """Pick up to two meaningful tokens following the brand alias as the model."""
+    idx = norm_title.find(alias)
+    if idx == -1:
+        return None
+    tail = norm_title[idx + len(alias):].strip()
+    tokens = _WORD.findall(tail)
+    model_tokens: list[str] = []
+    for tok in tokens:
+        if tok in _MODEL_STOPWORDS:
+            # Stop at the first descriptor once we already have a model word;
+            # otherwise skip leading stopwords and keep looking.
+            if model_tokens:
+                break
+            continue
+        model_tokens.append(tok)
+        # A name token followed by a number (e.g. "marlin" "7") -> take both.
+        if len(model_tokens) >= 2:
+            break
+    if not model_tokens:
+        return None
+    return " ".join(model_tokens)
+
+
+def extract_brand_model(
+    title: str, brand_hint: str | None = None
+) -> tuple[str | None, str | None]:
+    """Return (canonical_brand, model) for a listing title.
+
+    Prefers the marketplace-provided ``brand_hint`` when it matches a known
+    brand, otherwise scans the normalized title for any known alias. ``model``
+    may be None when nothing usable follows the brand.
+    """
+    norm_title = normalize(title)
+
+    # 1) Trust the marketplace brand hint if it maps to a known brand.
+    chosen_brand: str | None = None
+    chosen_alias: str | None = None
+    if brand_hint:
+        norm_hint = normalize(brand_hint)
+        for alias, canonical in _ALIAS_INDEX:
+            if norm_hint == alias:
+                chosen_brand = canonical
+                # Find the alias inside the title (if present) for model parsing.
+                chosen_alias = alias if alias in norm_title else None
+                break
+
+    # 2) Otherwise scan the title for the first (longest) alias present.
+    if chosen_brand is None:
+        for alias, canonical in _ALIAS_INDEX:
+            if _alias_in_title(norm_title, alias):
+                chosen_brand = canonical
+                chosen_alias = alias
+                break
+
+    if chosen_brand is None:
+        return None, None
+
+    model = _extract_model(norm_title, chosen_alias) if chosen_alias else None
+    return chosen_brand, model
+
+
+def _alias_in_title(norm_title: str, alias: str) -> bool:
+    """Whole-word/phrase containment so 'gt' doesn't match 'light'."""
+    pattern = r"(?:^| )" + re.escape(alias) + r"(?: |$)"
+    return re.search(pattern, norm_title) is not None
+
+
+def is_part_listing(title: str) -> bool:
+    """True when the title indicates parts/accessories rather than a whole bike."""
+    tokens = set(normalize(title).split())
+    return bool(tokens & config.PART_NOISE_TOKENS)
+
+
+# Plausible bicycle wheel diameters (inches) to avoid matching frame sizes etc.
+_PLAUSIBLE_WHEELS = {12, 14, 16, 20, 24, 26, 27, 28, 29}
+# A standalone 2-digit number (optionally .5), not part of a longer number such
+# as a year ("2024") or a price. Boundaries prevent matching inside 4-digit runs.
+_WHEEL_RE = re.compile(r"(?<!\d)(\d{2}(?:\.\d)?)(?!\d)")
+
+
+def parse_wheel_inches(title: str) -> float | None:
+    """Best-effort wheel diameter (inches) from a title, or None.
+
+    Works on the raw title (lowercased) so decimals like 27.5 survive; ignores
+    4-digit years and only accepts diameters that are plausible wheel sizes.
+    """
+    text = title.lower().replace(",", ".")
+    for match in _WHEEL_RE.finditer(text):
+        try:
+            val = float(match.group(1))
+        except ValueError:
+            continue
+        if int(round(val)) in _PLAUSIBLE_WHEELS:
+            return val
+    return None
+
+
+def is_kids_listing(title: str, wheel_inches: float | None) -> bool:
+    """True when a listing is a kids/junior or small-wheel bike."""
+    if wheel_inches is not None and wheel_inches <= config.SMALL_WHEEL_MAX_INCHES:
+        return True
+    tokens = set(normalize(title).split())
+    if tokens & config.KIDS_TITLE_TOKENS:
+        return True
+    # Fall back to a wheel size parsed from the title itself.
+    title_wheel = parse_wheel_inches(title)
+    if title_wheel is not None and title_wheel <= config.SMALL_WHEEL_MAX_INCHES:
+        return True
+    return False
