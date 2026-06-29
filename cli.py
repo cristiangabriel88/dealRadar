@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import argparse
 import sys
+from dataclasses import replace
 
 import config
+from olx_finder.products import PRODUCTS, get_product
 from olx_finder.sources import OlxSource
 from olx_finder.stats import (
     DEFAULT_MATCH_LEVEL,
@@ -34,7 +36,13 @@ except (AttributeError, ValueError):
 def main() -> None:
     parser = argparse.ArgumentParser(description="OLX Deal Finder — CLI verification")
     parser.add_argument("--city", default="Bucuresti", help="City to search (see config.CITIES)")
-    parser.add_argument("--query", default=config.DEFAULT_QUERY, help="Search query")
+    parser.add_argument(
+        "--product",
+        default="Bikes",
+        choices=list(PRODUCTS),
+        help="Product type to hunt (default: %(default)s)",
+    )
+    parser.add_argument("--query", default=None, help="Override the product's search query")
     parser.add_argument("--sample", type=int, default=10, help="How many parsed listings to print")
     parser.add_argument("--no-cache", action="store_true", help="Bypass the SQLite cache")
     parser.add_argument(
@@ -53,15 +61,18 @@ def main() -> None:
     args = parser.parse_args()
 
     mode = get_mode(args.mode)
+    product = get_product(args.product)
+    if args.query:
+        product = replace(product, query=args.query)
     source = OlxSource(use_cache=not args.no_cache)
-    print(f"Fetching '{args.query}' bikes in {args.city} from {source.name} ...")
-    listings = source.search(args.query, args.city)
+    print(f"Fetching '{product.query}' ({product.key}) in {args.city} from {source.name} ...")
+    listings = source.search(product, args.city)
     print(
         f"Fetched {len(listings)} listings.  Mode: {mode.key} — {mode.label}  "
         f"Match: {args.match} — {MATCH_LEVELS[args.match]}\n"
     )
 
-    groups = build_groups(listings, mode)
+    groups = build_groups(listings, mode, product)
     deals = flag_deals(groups, mode, args.match)
 
     _print_sample(listings, args.sample)

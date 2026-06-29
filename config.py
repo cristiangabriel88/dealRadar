@@ -85,6 +85,31 @@ PART_NOISE_TOKENS: frozenset[str] = frozenset(
     }
 )
 
+# Generic Romanian condition/sale descriptors that follow a model name in any
+# product's listings and must never be mistaken for (a part of) a model. Shared
+# by every product's model-stopword set.
+GENERIC_DESCRIPTOR_TOKENS: frozenset[str] = frozenset(
+    {
+        "noua", "nou", "noi", "stare", "buna", "foarte", "ca", "si", "cu",
+        "de", "in", "la", "pentru", "second", "hand", "import", "germania",
+        "bun", "buni", "perfect", "perfecta", "impecabil", "impecabila",
+        "intretinuta", "ingrijita", "urgent", "urgenta", "negociabil", "fix",
+        "ieftin", "ieftina", "putin", "folosita", "folosit", "vand", "vanzare",
+    }
+)
+
+# Tokens that are never part of a *bike* model (units, types, sizes), unioned
+# with the generic descriptors above.
+BIKE_MODEL_STOPWORDS: frozenset[str] = GENERIC_DESCRIPTOR_TOKENS | frozenset(
+    {
+        "mtb", "full", "suspension", "hardtail", "carbon", "aluminiu", "alu",
+        "copii", "copil", "dama", "barbati", "femei", "baieti", "fete",
+        "electrica", "electric", "ebike", "e", "bike", "bicicleta", "mountain",
+        "cursiera", "city", "trekking", "gravel", "bmx", "downhill", "enduro",
+        "viteze", "inch", "marimea", "marime", "roti", "roata",
+    }
+)
+
 # --------------------------------------------------------------------------- #
 # Known bike brands and their normalized aliases
 # --------------------------------------------------------------------------- #
@@ -136,6 +161,108 @@ BRANDS: dict[str, list[str]] = {
 }
 
 # --------------------------------------------------------------------------- #
+# Known guitar brands and their normalized aliases
+# --------------------------------------------------------------------------- #
+#
+# Same shape as BRANDS above, but for guitars. Ambiguous English words that
+# double as common listing descriptors (e.g. "vintage", "flight") are left out
+# so they don't mis-tag generic guitars. "Hora" is the Romanian maker (Reghin).
+GUITAR_BRANDS: dict[str, list[str]] = {
+    "Fender": ["fender"],
+    "Squier": ["squier"],
+    "Gibson": ["gibson"],
+    "Epiphone": ["epiphone"],
+    "Ibanez": ["ibanez"],
+    "Yamaha": ["yamaha"],
+    "Jackson": ["jackson"],
+    "ESP": ["esp", "ltd", "esp ltd"],
+    "Schecter": ["schecter"],
+    "PRS": ["prs", "paul reed smith"],
+    "Gretsch": ["gretsch"],
+    "Cort": ["cort"],
+    "Harley Benton": ["harley benton", "harleybenton"],
+    "Takamine": ["takamine"],
+    "Martin": ["martin"],
+    "Taylor": ["taylor"],
+    "Washburn": ["washburn"],
+    "Dean": ["dean"],
+    "Charvel": ["charvel"],
+    "Music Man": ["music man", "musicman", "sterling"],
+    "BC Rich": ["bc rich", "b c rich"],
+    "Hohner": ["hohner"],
+    "Stagg": ["stagg"],
+    "Ortega": ["ortega"],
+    "Cordoba": ["cordoba"],
+    "Admira": ["admira"],
+    "Alhambra": ["alhambra"],
+    "Valencia": ["valencia"],
+    "Aria": ["aria"],
+    "Hagstrom": ["hagstrom"],
+    "Framus": ["framus"],
+    "Kremona": ["kremona"],
+    "Eko": ["eko"],
+    "Hora": ["hora"],
+    "Lag": ["lag"],
+    "Vox": ["vox"],
+}
+
+# Titles containing any of these tokens are guitar parts/accessories, not whole
+# guitars, and are excluded from the analysis (mirrors PART_NOISE_TOKENS).
+GUITAR_PART_NOISE_TOKENS: frozenset[str] = frozenset(
+    {
+        "husa",        # gig bag
+        "toc",         # hard case
+        "corzi",       # strings
+        "coarda",      # string
+        "pana",        # pick
+        "pene",        # picks
+        "pick",
+        "pickuri",
+        "doza",        # pickup
+        "doze",        # pickups
+        "ampli",       # amp
+        "amplificator",
+        "combo",       # combo amp
+        "boxa",        # speaker
+        "statie",      # amp head
+        "pedala",      # effects pedal
+        "efect",       # effect
+        "efecte",
+        "procesor",    # multi-fx
+        "curea",       # strap
+        "stativ",      # stand
+        "stand",
+        "suport",      # holder
+        "acordor",     # tuner
+        "metronom",
+        "capodastru",  # capo
+        "capo",
+        "cablu",       # cable
+        "jack",
+        "diapazon",    # fretboard/diapason (sold as a part)
+        "scaun",       # stool
+    }
+)
+
+# Tokens that are never part of a *guitar* model (types, sizes), unioned with
+# the generic descriptors.
+GUITAR_MODEL_STOPWORDS: frozenset[str] = GENERIC_DESCRIPTOR_TOKENS | frozenset(
+    {
+        "chitara", "chitare", "guitar", "electrica", "electric", "acustica",
+        "acustic", "clasica", "clasic", "classical", "electroacustica",
+        "semiacustica", "bas", "bass", "ukulele", "copii", "copil",
+        "incepatori", "incepator", "junior", "set", "pachet", "lemn",
+        "profesionala", "profesional", "marimea", "marime",
+    }
+)
+
+# Children's / junior guitars, excluded from the adult comparison pool in the
+# guarded grouping mode (the guitar analogue of KIDS_TITLE_TOKENS for bikes).
+GUITAR_KIDS_TITLE_TOKENS: frozenset[str] = frozenset(
+    {"copii", "copil", "copilas", "junior"}
+)
+
+# --------------------------------------------------------------------------- #
 # Marketplace request settings (be polite)
 # --------------------------------------------------------------------------- #
 
@@ -155,6 +282,12 @@ BACKOFF_BASE: float = 2.0      # exponential backoff base (seconds)
 OLX_BICYCLES_CATEGORY_ID: int = 987
 OLX_OFFERS_ENDPOINT: str = "https://www.olx.ro/api/v1/offers/"
 
+# OLX guitars: the offers API also accepts a bare ``query`` with no category, so
+# rather than hard-code an unverified instruments category id we search by
+# keyword only (None => the category_id param is omitted). Set this to the live
+# "Chitare" category id if you want to scope OLX results more tightly.
+OLX_GUITARS_CATEGORY_ID: int | None = None
+
 # --- Other Romanian marketplaces ------------------------------------------ #
 # These have no clean public JSON API like OLX, so each source scopes to the
 # site's bicycle section and we filter results to the selected city client-side
@@ -166,12 +299,24 @@ PUBLI24_BASE: str = "https://www.publi24.ro"
 PUBLI24_BICYCLES_URL: str = (
     "https://www.publi24.ro/anunturi/timp-liber-sport/biciclete-accesorii/biciclete/"
 )
+# Publi24 musical-instruments category (same card markup / ?pag=N paging). It
+# pools all instruments; non-guitars are dropped downstream since they carry no
+# known guitar brand, and accessories are removed by GUITAR_PART_NOISE_TOKENS.
+PUBLI24_GUITARS_URL: str = (
+    "https://www.publi24.ro/anunturi/timp-liber-sport/instrumente-muzicale/"
+)
 
 # Lajumate: a Next.js site; the bikes category embeds listing JSON in the
 # page's __NEXT_DATA__ script (?page=N paging). Cleaner than scraping its markup.
 LAJUMATE_BASE: str = "https://lajumate.ro"
 LAJUMATE_BICYCLES_URL: str = (
     "https://lajumate.ro/anunturi/sport-timp-liber-arta/biciclete-fitness-suplimente"
+)
+# Lajumate musical-instruments category. The same Next.js app serves this page
+# (follow_redirects resolves it to the canonical route), so __NEXT_DATA__ parsing
+# and ?page=N paging work as for bikes. Re-confirm the path if the site changes.
+LAJUMATE_GUITARS_URL: str = (
+    "https://lajumate.ro/anunturi_muzica-instrumente-muzicale.html"
 )
 
 # Anuntul: no bike-only category, so we keyword-search ("bicicleta") and let the
@@ -188,8 +333,10 @@ BIKLO_BASE: str = "https://www.biklo.ro"
 BIKLO_BICYCLES_URL: str = "https://admin.dirtbike.ro/api/bazar-ads-elastic/biciclete"
 BIKLO_IMAGE_BASE: str = "https://admin.dirtbike.ro/storage/"
 
-# Default search query (product type is fixed to bikes for now).
+# Default search query (the bikes product; see olx_finder/products.py).
 DEFAULT_QUERY: str = "bicicleta"
+# Keyword used to search guitars on the keyword-based sources (OLX, Anuntul).
+GUITAR_QUERY: str = "chitara"
 
 # --------------------------------------------------------------------------- #
 # Caching
@@ -204,6 +351,17 @@ CACHE_TTL_MINUTES: int = 5
 # city_id used by the offers API. To add a locality, search it on olx.ro and
 # read the city id from the offers API response (location.city.id).
 DEFAULT_CITY: str = "Bucuresti"  # preselected in the UI city picker
+
+# Sentinel value for the "search all of Romania" entry in the city picker. When
+# selected, sources drop the city filter entirely (OLX omits city_id; the
+# client-filtered sources keep every listing).
+ALL_CITIES: str = "All"
+
+# Search-radius options (km) offered in the UI. 0 = the selected city only.
+# Applied via OLX's native ``distance`` query param server-side, and by matching
+# any MAIN_CITIES locality within range for the client-filtered sources.
+DISTANCE_OPTIONS: list[int] = [0, 25, 50, 100, 150]
+DEFAULT_DISTANCE: int = 0
 
 CITIES: dict[str, int] = {
     "Abrud":                 24693,
@@ -524,4 +682,58 @@ CITIES: dict[str, int] = {
     "Zarnesti":              28553,
     "Zimnicea":              69939,
     "Zlatna":                26683,
+}
+
+# --------------------------------------------------------------------------- #
+# Main cities -> (latitude, longitude).
+# --------------------------------------------------------------------------- #
+# The shortlist shown in the city picker: Bucharest plus every county capital
+# (resedinta de judet). Every key MUST also exist in CITIES (so OLX's city_id
+# lookup works). Coordinates back the "search radius" feature for the
+# client-filtered sources: a listing counts as in range when its locality
+# matches a main city within the selected radius of the chosen city. OLX uses
+# its own server-side ``distance`` filter instead, so it is not limited to this
+# shortlist.
+MAIN_CITIES: dict[str, tuple[float, float]] = {
+    "Bucuresti":              (44.4268, 26.1025),
+    "Alba Iulia":             (46.0667, 23.5833),
+    "Alexandria":             (43.9667, 25.3333),
+    "Arad":                   (46.1667, 21.3167),
+    "Bacau":                  (46.5667, 26.9167),
+    "Baia Mare":              (47.6567, 23.5681),
+    "Bistrita":               (47.1333, 24.5000),
+    "Botosani":               (47.7500, 26.6667),
+    "Braila":                 (45.2692, 27.9575),
+    "Brasov":                 (45.6667, 25.6167),
+    "Buzau":                  (45.1500, 26.8167),
+    "Calarasi":               (44.2000, 27.3333),
+    "Cluj-Napoca":            (46.7667, 23.6000),
+    "Constanta":              (44.1733, 28.6383),
+    "Craiova":                (44.3302, 23.7949),
+    "Deva":                   (45.8833, 22.9000),
+    "Drobeta-Turnu Severin":  (44.6361, 22.6561),
+    "Focsani":                (45.6967, 27.1858),
+    "Galati":                 (45.4353, 28.0080),
+    "Giurgiu":                (43.9000, 25.9667),
+    "Iasi":                   (47.1622, 27.5889),
+    "Miercurea-Ciuc":         (46.3597, 25.8019),
+    "Oradea":                 (47.0722, 21.9211),
+    "Piatra Neamt":           (46.9275, 26.3708),
+    "Pitesti":                (44.8565, 24.8692),
+    "Ploiesti":               (44.9419, 26.0225),
+    "Ramnicu Valcea":         (45.1000, 24.3667),
+    "Resita":                 (45.3008, 21.8892),
+    "Satu Mare":              (47.7919, 22.8856),
+    "Sfantu Gheorghe":        (45.8667, 25.7833),
+    "Sibiu":                  (45.7928, 24.1521),
+    "Slatina":                (44.4308, 24.3719),
+    "Slobozia":               (44.5639, 27.3661),
+    "Suceava":                (47.6514, 26.2556),
+    "Targoviste":             (44.9244, 25.4567),
+    "Targu Jiu":              (45.0333, 23.2833),
+    "Targu-Mures":            (46.5425, 24.5575),
+    "Timisoara":              (45.7489, 21.2087),
+    "Tulcea":                 (45.1719, 28.7919),
+    "Vaslui":                 (46.6383, 27.7297),
+    "Zalau":                  (47.1911, 23.0572),
 }

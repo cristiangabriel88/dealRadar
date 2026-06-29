@@ -18,8 +18,9 @@ from bs4 import BeautifulSoup
 import config
 from olx_finder import cache
 from olx_finder.models import Listing
+from olx_finder.products import Product
 from olx_finder.sources import _http
-from olx_finder.sources.base import MarketplaceSource, matches_city
+from olx_finder.sources.base import MarketplaceSource, city_in_scope
 
 _DIGITS = re.compile(r"[\d.\s]+")
 
@@ -35,31 +36,34 @@ class AnuntulSource(MarketplaceSource):
     def supported_cities(self) -> list[str]:
         return sorted(config.CITIES)
 
-    def search(self, query: str, city: str) -> list[Listing]:
-        if city not in config.CITIES:
+    def search(self, product: Product, city: str, distance: int = 0) -> list[Listing]:
+        if city != config.ALL_CITIES and city not in config.CITIES:
             raise ValueError(
                 f"Unknown city {city!r}. Known cities: {', '.join(sorted(config.CITIES))}"
             )
 
+        query = product.query
+        # National keyword feed; city/radius scope is applied in _build, so we
+        # cache by city alone (raw is radius-independent) and re-filter on read.
         if self.use_cache:
             cached = cache.get(self.name, query, city)
             if cached is not None:
-                return self._build(cached, city)
+                return self._build(cached, city, distance)
 
         raw = self._fetch_all(query)
 
         if self.use_cache:
             cache.put(self.name, query, city, raw)
 
-        return self._build(raw, city)
+        return self._build(raw, city, distance)
 
     # ------------------------------------------------------------------ #
 
-    def _build(self, raw: list[dict[str, Any]], city: str) -> list[Listing]:
+    def _build(self, raw: list[dict[str, Any]], city: str, distance: int) -> list[Listing]:
         out = []
         for item in raw:
             lst = self._to_listing(item)
-            if lst is not None and matches_city(city, lst.city):
+            if lst is not None and city_in_scope(city, distance, lst.city):
                 out.append(lst)
         return out
 

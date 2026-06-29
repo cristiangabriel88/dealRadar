@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 import unicodedata
 
-import config
+from olx_finder.products import BIKES, Product
 
 # Romanian diacritics -> ASCII. unicodedata handles the combining-mark cases,
 # but we map the precomposed ones explicitly for clarity and to cover the
@@ -45,11 +45,13 @@ def normalize(text: str) -> str:
     return _MULTISPACE.sub(" ", text).strip()
 
 
-# Precompute a normalized alias -> canonical brand map, longest aliases first so
-# multi-word brands ("rock rider") win over their single-word substrings.
-def _build_alias_index() -> list[tuple[str, str]]:
+# Precompute a normalized alias -> canonical brand map per product, longest
+# aliases first so multi-word brands ("rock rider") win over their single-word
+# substrings. Indices are built lazily and cached by product key (each product's
+# ``brands`` dict is a stable module-level constant).
+def _build_alias_index(brands: dict[str, list[str]]) -> list[tuple[str, str]]:
     pairs: list[tuple[str, str]] = []
-    for canonical, aliases in config.BRANDS.items():
+    for canonical, aliases in brands.items():
         seen: set[str] = set()
         for alias in [canonical, *aliases]:
             norm = normalize(alias)
@@ -61,30 +63,34 @@ def _build_alias_index() -> list[tuple[str, str]]:
     return pairs
 
 
-_ALIAS_INDEX = _build_alias_index()
+_ALIAS_CACHE: dict[str, list[tuple[str, str]]] = {}
 
-# Tokens that are never a model (units, common descriptors, sizes).
-_MODEL_STOPWORDS = frozenset(
-    {
-        "mtb", "full", "suspension", "hardtail", "carbon", "aluminiu", "alu",
-        "noua", "nou", "noi", "stare", "buna", "foarte", "ca", "si", "cu",
-        "de", "in", "la", "pentru", "copii", "copil", "dama", "barbati",
-        "femei", "baieti", "fete", "second", "hand", "import", "germania",
-        "electrica", "electric", "ebike", "e", "bike", "bicicleta", "mountain",
-        "cursiera", "city", "trekking", "gravel", "bmx", "downhill", "enduro",
-        "viteze", "inch", "marimea", "marime", "roti", "roata",
-    }
-)
+
+def _alias_index(product: Product) -> list[tuple[str, str]]:
+    index = _ALIAS_CACHE.get(product.key)
+    if index is None:
+        index = _build_alias_index(product.brands)
+        _ALIAS_CACHE[product.key] = index
+    return index
+
 
 # A model token: an alphanumeric word, optionally with a trailing number group
-# (e.g. "marlin", "7", "540", "avalanche"). We accept 1-2 trailing tokens after
-# the brand so "Marlin 7" and "Rockrider 540" are captured but long descriptive
-# tails are not swallowed.
+# (e.g. "marlin", "7", "540", "avalanche").
 _WORD = re.compile(r"[a-z0-9]+")
+# A 4-digit model year (1990-2099). Years are never part of a model name, so we
+# never let one become (or extend) the model — "Avalanche 2020" is an Avalanche.
+_YEAR_RE = re.compile(r"^(?:19|20)\d{2}$")
 
 
-def _extract_model(norm_title: str, alias: str) -> str | None:
-    """Pick up to two meaningful tokens following the brand alias as the model."""
+def _extract_model(norm_title: str, alias: str, stopwords: frozenset[str]) -> str | None:
+    """Extract the model family following the brand alias.
+
+    Up to two meaningful tokens following the brand form the model, so real
+    multi-word models survive ("touring sl", "marlin 7", "st 540"). Descriptive
+    tails ("bun", "import") are stopwords and model years ("2020") are dropped, so
+    all "GT Avalanche …" listings collapse to one comparable model rather than
+    fragmenting into one-off groups.
+    """
     idx = norm_title.find(alias)
     if idx == -1:
         return None
@@ -92,14 +98,20 @@ def _extract_model(norm_title: str, alias: str) -> str | None:
     tokens = _WORD.findall(tail)
     model_tokens: list[str] = []
     for tok in tokens:
-        if tok in _MODEL_STOPWORDS:
+        if tok in stopwords:
             # Stop at the first descriptor once we already have a model word;
             # otherwise skip leading stopwords and keep looking.
             if model_tokens:
                 break
             continue
+        if _YEAR_RE.match(tok):
+            # A model year is never part of the name: stop if it trails the model,
+            # skip it if it leads (e.g. "GT 2020 Avalanche").
+            if model_tokens:
+                break
+            continue
         model_tokens.append(tok)
-        # A name token followed by a number (e.g. "marlin" "7") -> take both.
+        # A name token plus one trailing token (e.g. "marlin" "7") -> take both.
         if len(model_tokens) >= 2:
             break
     if not model_tokens:
@@ -108,22 +120,24 @@ def _extract_model(norm_title: str, alias: str) -> str | None:
 
 
 def extract_brand_model(
-    title: str, brand_hint: str | None = None
+    title: str, brand_hint: str | None = None, product: Product = BIKES
 ) -> tuple[str | None, str | None]:
     """Return (canonical_brand, model) for a listing title.
 
     Prefers the marketplace-provided ``brand_hint`` when it matches a known
     brand, otherwise scans the normalized title for any known alias. ``model``
-    may be None when nothing usable follows the brand.
+    may be None when nothing usable follows the brand. ``product`` selects which
+    brand list and model-stopword vocabulary to match against (default: bikes).
     """
     norm_title = normalize(title)
+    alias_index = _alias_index(product)
 
     # 1) Trust the marketplace brand hint if it maps to a known brand.
     chosen_brand: str | None = None
     chosen_alias: str | None = None
     if brand_hint:
         norm_hint = normalize(brand_hint)
-        for alias, canonical in _ALIAS_INDEX:
+        for alias, canonical in alias_index:
             if norm_hint == alias:
                 chosen_brand = canonical
                 # Find the alias inside the title (if present) for model parsing.
@@ -132,7 +146,7 @@ def extract_brand_model(
 
     # 2) Otherwise scan the title for the first (longest) alias present.
     if chosen_brand is None:
-        for alias, canonical in _ALIAS_INDEX:
+        for alias, canonical in alias_index:
             if _alias_in_title(norm_title, alias):
                 chosen_brand = canonical
                 chosen_alias = alias
@@ -141,7 +155,11 @@ def extract_brand_model(
     if chosen_brand is None:
         return None, None
 
-    model = _extract_model(norm_title, chosen_alias) if chosen_alias else None
+    model = (
+        _extract_model(norm_title, chosen_alias, product.model_stopwords)
+        if chosen_alias
+        else None
+    )
     return chosen_brand, model
 
 
@@ -151,10 +169,10 @@ def _alias_in_title(norm_title: str, alias: str) -> bool:
     return re.search(pattern, norm_title) is not None
 
 
-def is_part_listing(title: str) -> bool:
-    """True when the title indicates parts/accessories rather than a whole bike."""
+def is_part_listing(title: str, product: Product = BIKES) -> bool:
+    """True when the title indicates parts/accessories rather than a whole item."""
     tokens = set(normalize(title).split())
-    return bool(tokens & config.PART_NOISE_TOKENS)
+    return bool(tokens & product.part_noise_tokens)
 
 
 # Plausible bicycle wheel diameters (inches) to avoid matching frame sizes etc.
@@ -181,15 +199,24 @@ def parse_wheel_inches(title: str) -> float | None:
     return None
 
 
-def is_kids_listing(title: str, wheel_inches: float | None) -> bool:
-    """True when a listing is a kids/junior or small-wheel bike."""
-    if wheel_inches is not None and wheel_inches <= config.SMALL_WHEEL_MAX_INCHES:
+def is_kids_listing(
+    title: str, wheel_inches: float | None, product: Product = BIKES
+) -> bool:
+    """True when a listing is a kids/junior item (or, for bikes, a small-wheel one).
+
+    The wheel-size guard only applies to products that define one
+    (``product.small_wheel_max_inches``); products without it (e.g. guitars) are
+    judged on the kids title tokens alone.
+    """
+    max_wheel = product.small_wheel_max_inches
+    if max_wheel is not None and wheel_inches is not None and wheel_inches <= max_wheel:
         return True
     tokens = set(normalize(title).split())
-    if tokens & config.KIDS_TITLE_TOKENS:
+    if tokens & product.kids_title_tokens:
         return True
-    # Fall back to a wheel size parsed from the title itself.
-    title_wheel = parse_wheel_inches(title)
-    if title_wheel is not None and title_wheel <= config.SMALL_WHEEL_MAX_INCHES:
-        return True
+    if max_wheel is not None:
+        # Fall back to a wheel size parsed from the title itself.
+        title_wheel = parse_wheel_inches(title)
+        if title_wheel is not None and title_wheel <= max_wheel:
+            return True
     return False

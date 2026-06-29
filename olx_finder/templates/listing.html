@@ -3,15 +3,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% if deal %}{{ deal.listing.title }} — {% endif %}Deal Finder</title>
+  <title>{% if deal %}{{ deal.listing.title }} — {% endif %}Deal Radar</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
   <header class="topbar">
     <div class="brand">
-      <span class="logo">◎</span>
+      <span class="logo" aria-hidden="true"></span>
       <div>
-        <h1>Deal Finder</h1>
+        <h1>Deal Radar</h1>
         <p class="tagline">A flagged listing and the comparables behind it.</p>
       </div>
     </div>

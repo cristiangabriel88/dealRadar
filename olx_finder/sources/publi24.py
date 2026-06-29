@@ -19,8 +19,9 @@ from bs4 import BeautifulSoup
 import config
 from olx_finder import cache
 from olx_finder.models import Listing
+from olx_finder.products import Product
 from olx_finder.sources import _http
-from olx_finder.sources.base import MarketplaceSource, matches_city
+from olx_finder.sources.base import MarketplaceSource, city_in_scope
 
 _DIGITS = re.compile(r"[\d.\s]+")
 
@@ -36,42 +37,48 @@ class Publi24Source(MarketplaceSource):
     def supported_cities(self) -> list[str]:
         return sorted(config.CITIES)
 
-    def search(self, query: str, city: str) -> list[Listing]:
-        if city not in config.CITIES:
+    def search(self, product: Product, city: str, distance: int = 0) -> list[Listing]:
+        if city != config.ALL_CITIES and city not in config.CITIES:
             raise ValueError(
                 f"Unknown city {city!r}. Known cities: {', '.join(sorted(config.CITIES))}"
             )
+        if product.publi24_url is None:
+            return []  # Publi24 has no category page for this product
 
+        query = product.query
+        # The fetched feed is national; the city/radius scope is applied in
+        # _build, so the cache is keyed by city alone (raw is the same for any
+        # radius) and re-filtered on read.
         if self.use_cache:
             cached = cache.get(self.name, query, city)
             if cached is not None:
-                return self._build(cached, city)
+                return self._build(cached, city, distance)
 
-        raw = self._fetch_all()
+        raw = self._fetch_all(product.publi24_url)
 
         if self.use_cache:
             cache.put(self.name, query, city, raw)
 
-        return self._build(raw, city)
+        return self._build(raw, city, distance)
 
     # ------------------------------------------------------------------ #
 
-    def _build(self, raw: list[dict[str, Any]], city: str) -> list[Listing]:
+    def _build(self, raw: list[dict[str, Any]], city: str, distance: int) -> list[Listing]:
         out = []
         for item in raw:
             lst = self._to_listing(item)
-            if lst is not None and matches_city(city, lst.city):
+            if lst is not None and city_in_scope(city, distance, lst.city):
                 out.append(lst)
         return out
 
-    def _fetch_all(self) -> list[dict[str, Any]]:
-        """Page through the bicycles category, politely, up to MAX_PAGES."""
+    def _fetch_all(self, category_url: str) -> list[dict[str, Any]]:
+        """Page through the product's category, politely, up to MAX_PAGES."""
         results: list[dict[str, Any]] = []
         seen: set[str] = set()
         with _http.make_client() as client:
             for page in range(config.MAX_PAGES):
                 params = {"pag": page + 1} if page else None
-                html = _http.get_html(client, config.PUBLI24_BICYCLES_URL, params)
+                html = _http.get_html(client, category_url, params)
                 if not html:
                     break
                 items = self._parse_page(html)

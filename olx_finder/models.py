@@ -93,6 +93,42 @@ class DealResult:
         )
 
 
+@dataclass(slots=True)
+class CheapestListing:
+    """The single lowest-priced current listing for one brand+model.
+
+    Powers the "Cheapest by model" view: for each brand+model that appears in the
+    pooled results (across *every* selected marketplace), this is the cheapest
+    exemplar out there, together with how many comparable listings back it and —
+    when there are enough of them — the model's typical price for context.
+    """
+
+    brand: str
+    model: str               # display label; "(model not detected)" when unknown
+    listing: Listing         # the cheapest listing of this brand+model
+    count: int               # how many listings of this brand+model were pooled
+    median: float | None     # None until there are enough comparables to trust
+    low: float | None
+    high: float | None
+
+    @property
+    def has_model(self) -> bool:
+        """Whether a real model (not the unknown-model marker) was identified."""
+        return bool(self.model) and not self.model.startswith("(")
+
+    @property
+    def descriptor(self) -> str:
+        """Human label for the group, e.g. 'GT Avalanche' or just 'GT'."""
+        return f"{self.brand} {self.model}" if self.has_model else self.brand
+
+    @property
+    def percent_below(self) -> float | None:
+        """How far the cheapest sits below the model median (None if no median)."""
+        if self.median is None or self.median <= 0:
+            return None
+        return (self.median - self.listing.price) / self.median
+
+
 def _fmt(value: float) -> str:
     """Format a price like '2 000' (no decimals, space thousands separator)."""
     return f"{round(value):,}".replace(",", " ")

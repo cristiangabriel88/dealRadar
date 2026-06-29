@@ -3,40 +3,81 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Deal Finder — bikes</title>
+  <title>Deal Radar</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
   <header class="topbar">
     <div class="brand">
-      <span class="logo">◎</span>
+      <span class="logo" aria-hidden="true"></span>
       <div>
-        <h1>Deal Finder</h1>
-        <p class="tagline">Statistical outliers among current bike listings — you verify, it finds.</p>
+        <h1>Deal Radar</h1>
+        <p class="tagline">Statistical outliers among current marketplace listings — you verify, it finds.</p>
       </div>
     </div>
   </header>
 
+  <!-- Live scan overlay: shown while a search is in flight, the radar scope
+       sweeps and the operation log types itself out. Driven by the submit
+       handler near the bottom of this file; the results page replaces it. -->
+  <div class="scan-overlay" id="scan-overlay" hidden>
+    <div class="scope" aria-hidden="true">
+      <div class="rings"></div>
+      <div class="cross-v"></div>
+      <div class="cross-h"></div>
+      <div class="sweep"></div>
+      <div class="core"></div>
+      <div class="blip b1"></div>
+      <div class="blip b2"></div>
+      <div class="blip b3"></div>
+      <div class="blip b4"></div>
+    </div>
+    <div class="scan-readout" role="status" aria-live="polite">
+      <div class="scan-status">Scanning the market</div>
+      <div class="scan-log" id="scan-log"></div>
+      <div class="scan-progress">
+        <div class="scan-progress-row"><span>Progress</span><span id="scan-pct">0%</span></div>
+        <div class="scan-track"><div class="scan-bar" id="scan-bar"></div></div>
+      </div>
+    </div>
+  </div>
+
   <main>
     <form class="search" method="post" action="/">
-      <div class="field">
-        <label for="product">Product</label>
-        <select id="product" name="product">
-          {% for p in product_types %}
-          <option value="{{ p }}" {{ 'selected' if p == selected_product }}>{{ p }}</option>
-          {% endfor %}
-        </select>
+      <div class="search-row">
+        <div class="field">
+          <label for="product">Product</label>
+          <select id="product" name="product">
+            {% for p in product_types %}
+            <option value="{{ p }}" {{ 'selected' if p == selected_product }}>{{ p }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="field grow">
+          <label for="city">City</label>
+          <select id="city" name="city">
+            {% for c in cities %}
+            <option value="{{ c }}" {{ 'selected' if c == selected_city }}>{{ c }}</option>
+            {% endfor %}
+            <option value="{{ all_cities }}" {{ 'selected' if selected_city == all_cities }}>All Romania</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="distance">Search radius</label>
+          <select id="distance" name="distance">
+            {% for d in distances %}
+            <option value="{{ d }}" {{ 'selected' if d == selected_distance }}>{{ 'This city only' if d == 0 else '+' ~ d ~ ' km' }}</option>
+            {% endfor %}
+          </select>
+        </div>
       </div>
 
-      <div class="field grow">
-        <label for="city">City</label>
-        <input id="city" name="city" list="city-list" value="{{ selected_city }}"
-               placeholder="Type to search…" autocomplete="off" required>
-        <datalist id="city-list">
-          {% for c in cities %}<option value="{{ c }}">{% endfor %}
-        </datalist>
-      </div>
-
+      <div class="search-row">
       <div class="field sources">
         <label>Sources</label>
         <div class="source-list">
@@ -80,27 +121,35 @@
           {% endfor %}
         </div>
       </div>
-
-      <div class="field grow">
-        <label for="mode">Grouping strategy</label>
-        <select id="mode" name="mode">
-          {% for m in modes %}
-          <option value="{{ m.key }}" {{ 'selected' if m.key == selected_mode }}>{{ m.label }}</option>
-          {% endfor %}
-        </select>
       </div>
 
-      <div class="field check">
-        <label for="match_model">Match by</label>
-        <label class="checkbox">
-          <input type="checkbox" id="match_model" name="match_model" {{ 'checked' if match_model }}>
-          <span>Brand + model<small>require comparable models</small></span>
-        </label>
-      </div>
+      <div class="search-row">
+        <div class="field grow">
+          <label for="mode">Grouping strategy</label>
+          <select id="mode" name="mode">
+            {% for m in modes %}
+            <option value="{{ m.key }}" {{ 'selected' if m.key == selected_mode }}>{{ m.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
 
-      <button type="submit" class="go">Find deals</button>
+        <div class="field check">
+          <label for="match_model">Match by</label>
+          <label class="checkbox">
+            <input type="checkbox" id="match_model" name="match_model" {{ 'checked' if match_model }}>
+            <span>Brand + model<small>require comparable models</small></span>
+          </label>
+        </div>
+
+        <button type="submit" class="go">Find deals</button>
+      </div>
     </form>
 
+    <!-- Results region. The search is submitted via fetch() and only this block
+         is swapped in with the response, so the page's own URL stays a plain GET
+         of "/". A browser refresh therefore re-loads the empty initial state
+         instead of re-running the last search. -->
+    <div id="results">
     <p class="mode-help">{{ mode_obj.description }}</p>
 
     {% if searched %}
@@ -109,7 +158,7 @@
       {% else %}
         <div class="summary">
           Scanned <strong>{{ listing_count }}</strong> listings in
-          <strong>{{ selected_city }}</strong> ·
+          <strong>{{ 'all of Romania' if selected_city == all_cities else selected_city }}</strong>{% if selected_distance and selected_city != all_cities %} <em>+{{ selected_distance }} km</em>{% endif %} ·
           <strong>{{ deals|length }}</strong> deal{{ '' if deals|length == 1 else 's' }} flagged ·
           match: <em>{{ 'brand + model' if match_model else 'brand only' }}</em> ·
           mode: <em>{{ mode_obj.label }}</em>
@@ -122,18 +171,28 @@
         </div>
         {% endif %}
 
+        <!-- Two lenses on the same pooled, cross-platform results:
+             · Deals — statistical low-side outliers (needs comparable models)
+             · Cheapest by model — the single lowest-priced exemplar of every
+               brand+model found, on whichever marketplace hosts it. -->
+        <div class="tabs" id="result-tabs">
+          <button type="button" class="tab active" data-tab="deals">Deals · {{ deals|length }}</button>
+          <button type="button" class="tab" data-tab="cheapest">Cheapest by model · {{ cheapest|length }}</button>
+        </div>
+
+        <div class="tab-panel" data-panel="deals">
         {% if deals %}
-        <div class="filterbar" id="filterbar">
+        <div class="filterbar" id="filterbar" data-grid="deals">
           <div class="filter-field">
-            <label for="filter-brand">Brand</label>
-            <select id="filter-brand"><option value="">All brands</option></select>
+            <label>Brand</label>
+            <select class="f-brand"><option value="">All brands</option></select>
           </div>
           <div class="filter-field">
-            <label for="filter-model">Model</label>
-            <select id="filter-model"><option value="">All models</option></select>
+            <label>Model</label>
+            <select class="f-model"><option value="">All models</option></select>
           </div>
-          <button type="button" id="filter-reset" class="reset">Reset filter</button>
-          <span class="filter-count" id="filter-count"></span>
+          <button type="button" class="f-reset reset">Reset filter</button>
+          <span class="f-count filter-count"></span>
         </div>
         <section class="deals" id="deals">
           {% for d in deals %}
@@ -143,7 +202,8 @@
             <a class="card-link" target="_blank" rel="noopener"
                aria-label="View {{ d.listing.title }} and comparables"
                href="{{ url_for('listing_detail', listing_id=d.listing.id,
-                                city=selected_city, source=selected_sources,
+                                city=selected_city, distance=selected_distance,
+                                source=selected_sources,
                                 product=selected_product, mode=selected_mode,
                                 match_model='1' if match_model else '0') }}"></a>
             <div class="thumb">
@@ -226,19 +286,194 @@
           <p class="hint">Matching by brand only: each listing is valued against its whole brand pool. Rows with a median have at least {{ mode_obj.min_samples }} listings and are the only ones used to flag deals.</p>
         </section>
         {% endif %}
+        </div><!-- /deals panel -->
+
+        <div class="tab-panel" data-panel="cheapest" hidden>
+        {% if cheapest %}
+        <p class="panel-help">The single lowest-priced listing of every brand+model found, pooled across all selected marketplaces — each links straight to the site that has it. Models with enough comparables show how far below the usual price the cheapest one sits.</p>
+        <div class="filterbar" id="cheapest-filterbar" data-grid="cheapest-grid">
+          <div class="filter-field">
+            <label>Brand</label>
+            <select class="f-brand"><option value="">All brands</option></select>
+          </div>
+          <div class="filter-field">
+            <label>Model</label>
+            <select class="f-model"><option value="">All models</option></select>
+          </div>
+          <button type="button" class="f-reset reset">Reset filter</button>
+          <span class="f-count filter-count"></span>
+        </div>
+        <section class="deals" id="cheapest-grid">
+          {% for c in cheapest %}
+          <article class="card"
+                   data-brand="{{ c.brand or '' }}"
+                   data-model="{{ c.model }}">
+            <div class="thumb">
+              {% if c.listing.thumbnail %}
+                <img src="{{ c.listing.thumbnail }}" alt="" loading="lazy">
+              {% else %}
+                <div class="noimg">no photo</div>
+              {% endif %}
+              {% if c.percent_below and c.percent_below > 0 %}<span class="badge">−{{ (c.percent_below * 100)|round|int }}%</span>{% endif %}
+              <span class="badge cheapest">lowest</span>
+              {% if c.listing.source %}<span class="badge source">{{ c.listing.source }}</span>{% endif %}
+            </div>
+            <div class="body">
+              <h3 class="title">{{ c.listing.title }}</h3>
+              <div class="price">{{ c.listing.price|lei }} <span class="cur">{{ c.listing.currency }}</span></div>
+              <div class="stats">
+                <div><span class="k">Model</span><span class="v">{{ c.descriptor }}</span></div>
+                <div><span class="k">Listings found</span><span class="v">{{ c.count }}</span></div>
+                {% if c.median is not none %}
+                <div><span class="k">Usual price</span><span class="v">{{ c.median|lei }} {{ c.listing.currency }}</span></div>
+                <div><span class="k">Typical range</span><span class="v">{{ c.low|lei }}–{{ c.high|lei }}</span></div>
+                {% endif %}
+              </div>
+              <div class="meta">
+                <span>{{ c.listing.city }}</span>
+                {% if c.listing.posted_at %}<span>{{ c.listing.posted_at.strftime('%Y-%m-%d') }}</span>{% endif %}
+              </div>
+              <a class="open" href="{{ c.listing.url }}" target="_blank" rel="noopener">Open on {{ c.listing.source or 'site' }} ↗</a>
+            </div>
+          </article>
+          {% endfor %}
+        </section>
+        {% else %}
+        <div class="notice">
+          No listings found to compare. Try another city or add more sources.
+        </div>
+        {% endif %}
+        </div><!-- /cheapest panel -->
       {% endif %}
     {% else %}
       <div class="empty">
-        <p>Pick a city, choose your sources, and hit <strong>Find deals</strong>. The tool pulls current
-        bike listings from the selected marketplaces, groups comparable ones, and surfaces those priced
+        <p>Pick a product and city, choose your sources, and hit <strong>Find deals</strong>. The tool pulls
+        current listings from the selected marketplaces, groups comparable ones, and surfaces those priced
         well below the group median.</p>
       </div>
     {% endif %}
+    </div><!-- /#results -->
   </main>
 
   <footer>
     <p>Local tool · data from selected marketplaces · thresholds in <code>config.py</code></p>
   </footer>
+
+  <script>
+  // Scan overlay + search submit: when a valid search is submitted, show the
+  // radar scope and type out the live operation log while the request runs.
+  //
+  // The search is sent with fetch() (NOT a normal form navigation) and only the
+  // #results block of the response is swapped into the page. This keeps the
+  // page's own URL a plain GET of "/", so pressing refresh re-loads the empty
+  // initial state instead of re-running (and re-prompting to resubmit) the last
+  // search. The log is paced on a timer and the progress bar holds just short of
+  // 100% until the real results arrive.
+  (function () {
+    var form = document.querySelector("form.search");
+    var overlay = document.getElementById("scan-overlay");
+    if (!form || !overlay) return;
+    var logEl = document.getElementById("scan-log");
+    var pctEl = document.getElementById("scan-pct");
+    var barEl = document.getElementById("scan-bar");
+    var timers = [];
+
+    function clearTimers() { timers.forEach(clearTimeout); timers = []; }
+    function setProgress(pct) {
+      if (pctEl) pctEl.textContent = pct + "%";
+      if (barEl) barEl.style.width = pct + "%";
+    }
+
+    // If the page is restored from the back/forward cache, make sure the overlay
+    // isn't left covering the page.
+    window.addEventListener("pageshow", function () { overlay.hidden = true; clearTimers(); });
+
+    form.addEventListener("submit", function (ev) {
+      // The submit event only fires once HTML5 validation passes, so by here we
+      // know the search will actually run. Take it over with fetch.
+      ev.preventDefault();
+
+      var cityEl = document.getElementById("city");
+      var city = (cityEl && cityEl.value.trim()) || "your city";
+      var srcs = Array.prototype.slice
+        .call(form.querySelectorAll("input[name=source]:checked"))
+        .map(function (b) { return b.value; });
+      if (!srcs.length) srcs = ["OLX"];
+      var srcLabel = srcs.length > 2 ? (srcs.length + " sources") : srcs.join(", ");
+      var match = document.getElementById("match_model");
+      var byModel = match && match.checked;
+
+      var steps = [
+        "Connecting to " + srcLabel + " …",
+        "Searching listings in " + city + " …",
+        "Fetching details across result pages",
+        "Reading titles · parsing brand" + (byModel ? " & model" : ""),
+        "Grouping comparable listings " + (byModel ? "by brand + model" : "by brand"),
+        "Computing the usual price for each group",
+        "Scoring every listing against its group",
+        "Flagging the statistical outliers …"
+      ];
+
+      clearTimers();
+      logEl.innerHTML = "";
+      setProgress(0);
+      overlay.hidden = false;
+
+      var i = 0;
+      function tick() {
+        var line = document.createElement("div");
+        line.className = "scan-line";
+        var arrow = document.createElement("span");
+        arrow.className = "scan-arrow";
+        arrow.textContent = "›";
+        line.appendChild(arrow);
+        line.appendChild(document.createTextNode(steps[i]));
+        logEl.appendChild(line);
+
+        // Fill toward 100%, but hold the last step at ~92% — the real request is
+        // still running and the swap will complete the bar when results arrive.
+        var pct = i < steps.length - 1
+          ? Math.round(((i + 1) / steps.length) * 100)
+          : 92;
+        setProgress(pct);
+
+        i++;
+        if (i < steps.length) {
+          timers.push(setTimeout(tick, 760));
+        } else {
+          // Keep a blinking cursor on the last line until the results land.
+          var cur = document.createElement("div");
+          cur.className = "scan-cursor";
+          logEl.appendChild(cur);
+        }
+      }
+      timers.push(setTimeout(tick, 200));
+
+      // Send the search and swap only the #results block from the response.
+      fetch(form.action || "/", { method: "POST", body: new FormData(form) })
+        .then(function (resp) { return resp.text(); })
+        .then(function (html) {
+          var doc = new DOMParser().parseFromString(html, "text/html");
+          var fresh = doc.getElementById("results");
+          var current = document.getElementById("results");
+          if (fresh && current) current.replaceWith(fresh);
+          clearTimers();
+          setProgress(100);
+          overlay.hidden = true;
+          if (window.initTabs) window.initTabs();
+          if (window.initDealFilter) window.initDealFilter();
+          window.scrollTo(0, 0);
+        })
+        .catch(function () {
+          // Network/parse failure: fall back to a normal submit so the user
+          // still gets results (this navigates, like the original behaviour).
+          clearTimers();
+          overlay.hidden = true;
+          form.submit();
+        });
+    });
+  })();
+  </script>
 
   <script>
   // Source checkbox group behaviour:
@@ -302,17 +537,49 @@
   </script>
 
   <script>
-  // Post-search filtering of the flagged deal cards by brand and model.
-  // Purely client-side: it hides/shows already-rendered cards (no re-fetch).
+  // The search radius is meaningless for a national ("All Romania") search, so
+  // grey it out whenever "All Romania" is selected.
   (function () {
-    var grid = document.getElementById("deals");
-    var bar = document.getElementById("filterbar");
+    var city = document.getElementById("city");
+    var distance = document.getElementById("distance");
+    if (!city || !distance) return;
+    function sync() { distance.disabled = city.value === "{{ all_cities }}"; }
+    city.addEventListener("change", sync);
+    sync();
+  })();
+  </script>
+
+  <script>
+  // Result tabs: switch between the "Deals" and "Cheapest by model" panels.
+  // Both render from the same pooled, cross-platform results. Re-runnable after
+  // the #results block is swapped in by the fetch-based search above.
+  window.initTabs = function () {
+    var wrap = document.getElementById("result-tabs");
+    if (!wrap) return;
+    var tabs = Array.prototype.slice.call(wrap.querySelectorAll(".tab"));
+    var panels = Array.prototype.slice.call(document.querySelectorAll(".tab-panel"));
+    tabs.forEach(function (tab) {
+      tab.addEventListener("click", function () {
+        tabs.forEach(function (t) { t.classList.remove("active"); });
+        tab.classList.add("active");
+        var name = tab.dataset.tab;
+        panels.forEach(function (p) { p.hidden = p.dataset.panel !== name; });
+      });
+    });
+  };
+
+  // Post-search filtering of cards in a grid by brand and model. Purely
+  // client-side: it hides/shows already-rendered cards (no re-fetch). Shared by
+  // both the Deals and Cheapest-by-model grids; each filter bar carries a
+  // data-grid pointing at the section it controls.
+  function initFilter(gridId, bar) {
+    var grid = document.getElementById(gridId);
     if (!grid || !bar) return;
 
-    var brandSel = document.getElementById("filter-brand");
-    var modelSel = document.getElementById("filter-model");
-    var resetBtn = document.getElementById("filter-reset");
-    var countEl = document.getElementById("filter-count");
+    var brandSel = bar.querySelector(".f-brand");
+    var modelSel = bar.querySelector(".f-model");
+    var resetBtn = bar.querySelector(".f-reset");
+    var countEl = bar.querySelector(".f-count");
     var cards = Array.prototype.slice.call(grid.querySelectorAll(".card"));
 
     // brand -> sorted set of its models, across all cards.
@@ -370,7 +637,17 @@
     resetBtn.addEventListener("click", function () {
       brandSel.value = ""; refreshModelOptions(); modelSel.value = ""; apply();
     });
-  })();
+  }
+
+  // Initialise every filter bar on the page against the grid it points at.
+  window.initDealFilter = function () {
+    document.querySelectorAll(".filterbar[data-grid]").forEach(function (bar) {
+      initFilter(bar.dataset.grid, bar);
+    });
+  };
+
+  initTabs();
+  initDealFilter();
   </script>
 </body>
 </html>

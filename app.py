@@ -11,6 +11,8 @@ from flask import Flask, render_template, request
 
 import config
 from olx_finder.models import Listing, _fmt
+from olx_finder.products import PRODUCTS, Product, get_product
+from olx_finder.products import DEFAULT_PRODUCT
 from olx_finder.sources import (
     AnuntulSource,
     BikloSource,
@@ -23,6 +25,7 @@ from olx_finder.stats import (
     GROUPING_MODES,
     build_groups,
     build_model_groups,
+    cheapest_by_model,
     dedupe_cross_source,
     flag_deals,
     get_mode,
@@ -55,38 +58,38 @@ DEFAULT_SOURCES = ["OLX"]
 # Facebook Marketplace needs a logged-in browser session (Playwright); deferred.
 DISABLED_SOURCES = {"Facebook Marketplace": "coming soon"}
 
-# Product-specific marketplaces: only shown (and only sensible) for a given
-# product type. biklo.ro is a bike-only marketplace, so its checkbox appears
-# only when "Bikes" is the selected product. The general SOURCES above apply to
-# every product.
-PRODUCT_SOURCES = {"Bikes": {"biklo.ro": BikloSource}}
+# Product-specific marketplaces, keyed by source name. A source listed here is
+# only shown (and only fetched) for the products whose ``extra_sources`` name it:
+# biklo.ro is a bike-only marketplace, so its checkbox appears only when "Bikes"
+# is selected. The general SOURCES above apply to every product.
+PRODUCT_SOURCE_CLASSES = {"biklo.ro": BikloSource}
 
 # Flat name -> class registry spanning general + product-specific sources, used
 # to resolve whatever the user selected when fetching.
-ALL_SOURCES = {
-    **SOURCES,
-    **{name: cls for srcs in PRODUCT_SOURCES.values() for name, cls in srcs.items()},
-}
+ALL_SOURCES = {**SOURCES, **PRODUCT_SOURCE_CLASSES}
 
-# Product types are fixed to bikes for now; the query is derived from this.
-PRODUCT_TYPES = {"Bikes": config.DEFAULT_QUERY}
+# UI mapping product -> its extra source names (only products that have any).
+PRODUCT_SOURCES = {
+    p.key: list(p.extra_sources) for p in PRODUCTS.values() if p.extra_sources
+}
 
 
 def aggregate(
-    selected_sources: list[str], query: str, city: str
+    selected_sources: list[str], product: Product, city: str, distance: int = 0
 ) -> tuple[list[Listing], list[str]]:
     """Fetch every selected source, pool + dedup their listings.
 
     Sources are fetched concurrently (each paginates with its own polite delay).
     A source that fails contributes an error message rather than aborting the
     whole search, so deals from the sites that succeeded are still shown. Each
-    listing is stamped with its source name before pooling.
+    listing is stamped with its source name before pooling. ``distance`` is the
+    search radius in km around ``city`` (0 = that city only).
     """
     names = [s for s in selected_sources if s in ALL_SOURCES] or DEFAULT_SOURCES
 
     def fetch(name: str) -> tuple[str, list[Listing] | None, str | None]:
         try:
-            listings = ALL_SOURCES[name]().search(query, city)
+            listings = ALL_SOURCES[name]().search(product, city, distance)
             for lst in listings:
                 lst.source = name
             return name, listings, None
@@ -113,12 +116,20 @@ def _lei(value: float) -> str:
 
 @app.route("/", methods=["GET", "POST"])
 def index() -> str:
-    cities = sorted(config.CITIES)
+    cities = sorted(config.MAIN_CITIES)
     modes = list(GROUPING_MODES.values())
 
     # Form state (defaults on first load; Bucharest is preselected).
-    default_city = config.DEFAULT_CITY if config.DEFAULT_CITY in config.CITIES else cities[0]
+    default_city = config.DEFAULT_CITY if config.DEFAULT_CITY in config.MAIN_CITIES else cities[0]
     selected_city = request.form.get("city", default_city)
+    # Search radius (km) around the selected city; validated against the allowed
+    # options so a hand-edited value can't slip through.
+    try:
+        selected_distance = int(request.form.get("distance", config.DEFAULT_DISTANCE))
+    except (TypeError, ValueError):
+        selected_distance = config.DEFAULT_DISTANCE
+    if selected_distance not in config.DISTANCE_OPTIONS:
+        selected_distance = config.DEFAULT_DISTANCE
     # Source is a multi-select checkbox group. First load starts with a clean
     # slate (nothing checked, no search run); the user picks sources or "Select
     # all". On POST an empty selection still falls back to DEFAULT_SOURCES.
@@ -126,7 +137,7 @@ def index() -> str:
         selected_sources = request.form.getlist("source") or DEFAULT_SOURCES
     else:
         selected_sources = []
-    selected_product = request.form.get("product", "Bikes")
+    selected_product = request.form.get("product", DEFAULT_PRODUCT)
     selected_mode = request.form.get("mode", config.DEFAULT_GROUPING_MODE)
     # Checkbox: checked => match by brand+model (default). On POST its absence
     # means the user unchecked it (= brand only); on first load it defaults checked.
@@ -138,11 +149,14 @@ def index() -> str:
 
     context: dict = {
         "cities": cities,
+        "all_cities": config.ALL_CITIES,
+        "distances": config.DISTANCE_OPTIONS,
+        "selected_distance": selected_distance,
         "modes": modes,
         "sources": list(SOURCES),
         "disabled_sources": DISABLED_SOURCES,
-        "product_sources": {p: list(srcs) for p, srcs in PRODUCT_SOURCES.items()},
-        "product_types": list(PRODUCT_TYPES),
+        "product_sources": PRODUCT_SOURCES,
+        "product_types": list(PRODUCTS),
         "selected_city": selected_city,
         "selected_sources": selected_sources,
         "selected_product": selected_product,
@@ -152,6 +166,7 @@ def index() -> str:
         "deals": [],
         "groups": [],
         "model_groups": [],
+        "cheapest": [],
         "listing_count": 0,
         "error": None,
         "source_errors": [],
@@ -160,20 +175,25 @@ def index() -> str:
 
     if request.method == "POST":
         context["searched"] = True
-        query = PRODUCT_TYPES.get(selected_product, config.DEFAULT_QUERY)
+        product = get_product(selected_product)
         mode = get_mode(selected_mode)
         try:
-            listings, source_errors = aggregate(selected_sources, query, selected_city)
-            groups = build_groups(listings, mode)
-            deals = flag_deals(groups, mode, match_level)
-            # Same-model comparables that actually back the deals (mode-independent).
-            model_groups = build_model_groups(
-                [lst for g in groups for lst in g.listings]
+            listings, source_errors = aggregate(
+                selected_sources, product, selected_city, selected_distance
             )
+            groups = build_groups(listings, mode, product)
+            deals = flag_deals(groups, mode, match_level)
+            # Listings that survived noise filtering, pooled across every source.
+            pooled = [lst for g in groups for lst in g.listings]
+            # Same-model comparables that actually back the deals (mode-independent).
+            model_groups = build_model_groups(pooled)
+            # Cross-platform "cheapest exemplar per brand+model" view.
+            cheapest = cheapest_by_model(pooled)
             context.update(
                 listing_count=len(listings),
                 groups=groups,
                 model_groups=model_groups,
+                cheapest=cheapest,
                 deals=deals,
                 # Partial failures: show deals from the sources that worked.
                 source_errors=source_errors,
@@ -193,12 +213,15 @@ def listing_detail(listing_id: str) -> str:
     search parameters carried in the query string, then locates the matching deal.
     """
     city = request.args.get("city", "")
+    try:
+        distance = int(request.args.get("distance", config.DEFAULT_DISTANCE))
+    except (TypeError, ValueError):
+        distance = config.DEFAULT_DISTANCE
     selected_sources = request.args.getlist("source") or DEFAULT_SOURCES
-    product = request.args.get("product", "Bikes")
+    product = get_product(request.args.get("product", DEFAULT_PRODUCT))
     mode_key = request.args.get("mode", config.DEFAULT_GROUPING_MODE)
     match_model = request.args.get("match_model") == "1"
     match_level = "brand_model" if match_model else "brand"
-    query = PRODUCT_TYPES.get(product, config.DEFAULT_QUERY)
     mode = get_mode(mode_key)
 
     deal = None
@@ -206,8 +229,8 @@ def listing_detail(listing_id: str) -> str:
     try:
         # Re-run the same multi-source pipeline so the deal's comparison group is
         # reproduced from the identical pool (the app keeps no server-side state).
-        listings, _ = aggregate(selected_sources, query, city)
-        groups = build_groups(listings, mode)
+        listings, _ = aggregate(selected_sources, product, city, distance)
+        groups = build_groups(listings, mode, product)
         deals = flag_deals(groups, mode, match_level)
         deal = next((d for d in deals if d.listing.id == listing_id), None)
     except Exception as exc:  # surface fetch/parsing errors in the UI

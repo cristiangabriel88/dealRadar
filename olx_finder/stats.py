@@ -22,13 +22,14 @@ from dataclasses import dataclass
 from statistics import median as _median
 
 import config
-from olx_finder.models import DealResult, Group, Listing
+from olx_finder.models import CheapestListing, DealResult, Group, Listing
 from olx_finder.parsing import (
     extract_brand_model,
     is_kids_listing,
     is_part_listing,
     normalize,
 )
+from olx_finder.products import BIKES, Product
 
 # Preferred order when the same item is reposted across sites: keep the first.
 _SOURCE_PRIORITY = ["OLX", "Publi24", "Lajumate", "Anuntul", "biklo.ro"]
@@ -39,6 +40,9 @@ _MOD_Z_CONST = 0.6745
 
 _ALL_MODELS = "(all models)"
 _UNKNOWN_MODEL = "(unknown model)"
+# Label for the per-brand bucket of listings whose exact model could not be
+# parsed (used by the "Cheapest by model" view, kept separate from real models).
+_NO_MODEL = "(model not detected)"
 
 # How a deal's "usual price" is established (selectable per search in the UI):
 #   * brand       — value a listing against its whole brand pool (looser, more
@@ -155,21 +159,23 @@ def dedupe_cross_source(listings: list[Listing]) -> list[Listing]:
     return result
 
 
-def annotate_listings(listings: list[Listing]) -> list[Listing]:
+def annotate_listings(listings: list[Listing], product: Product = BIKES) -> list[Listing]:
     """Fill in brand/model on each listing (in place) and return the list."""
     for listing in listings:
-        brand, model = extract_brand_model(listing.title, listing.brand_hint)
+        brand, model = extract_brand_model(listing.title, listing.brand_hint, product)
         listing.brand = brand
         listing.model = model
     return listings
 
 
-def _passes_noise_filter(listing: Listing, mode: GroupingMode) -> bool:
+def _passes_noise_filter(
+    listing: Listing, mode: GroupingMode, product: Product
+) -> bool:
     if listing.price <= 0 or listing.price < config.MIN_PLAUSIBLE_PRICE:
         return False
-    if is_part_listing(listing.title):
+    if is_part_listing(listing.title, product):
         return False
-    if mode.exclude_kids and is_kids_listing(listing.title, listing.wheel_inches):
+    if mode.exclude_kids and is_kids_listing(listing.title, listing.wheel_inches, product):
         return False
     return True
 
@@ -185,22 +191,25 @@ def _group_key(listing: Listing, mode: GroupingMode) -> tuple[str, str, str] | N
 
 
 def build_groups(
-    listings: list[Listing], mode: GroupingMode | str | None = None
+    listings: list[Listing],
+    mode: GroupingMode | str | None = None,
+    product: Product = BIKES,
 ) -> list[Group]:
     """Filter noise, group by the mode's strategy, and compute robust statistics.
 
     Groups with at least ``mode.min_samples`` listings get median/MAD/range filled
     in; smaller groups are still returned (for the breakdown view) but left without
-    statistics so they are never used to flag deals.
+    statistics so they are never used to flag deals. ``product`` selects the brand
+    list, parts/stopword vocabularies and comparison-pool guards to apply.
     """
     if not isinstance(mode, GroupingMode):
         mode = get_mode(mode)
 
-    annotate_listings(listings)
+    annotate_listings(listings, product)
 
     groups: dict[str, Group] = {}
     for listing in listings:
-        if not _passes_noise_filter(listing, mode):
+        if not _passes_noise_filter(listing, mode, product):
             continue
         keyed = _group_key(listing, mode)
         if keyed is None:
@@ -255,6 +264,65 @@ def build_model_groups(listings: list[Listing]) -> list[Group]:
         key=lambda g: (g.median is not None, g.count),
         reverse=True,
     )
+
+
+def cheapest_by_model(listings: list[Listing]) -> list[CheapestListing]:
+    """One entry per brand+model: the single cheapest listing across all sources.
+
+    Unlike :func:`flag_deals`, this is not statistical — it answers "where is the
+    cheapest <brand model> right now, on any platform?". Every brand+model with at
+    least one listing is represented (even a one-off), so nothing is hidden just
+    because a model is rare. The cheapest pick links back to whichever marketplace
+    actually hosts it (its ``source`` is already stamped on the listing).
+
+    A model's median/range is filled in only when it has at least
+    ``config.MIN_MODEL_COMPARABLES`` *same-model* listings, so the "% below" hint
+    is shown only when there is a trustworthy market price to compare against.
+    Listings whose exact model could not be parsed are pooled per brand under a
+    clearly-labelled marker and never get a (meaningless, mixed) median.
+
+    The input is expected to be already noise-filtered and brand/model-annotated
+    (e.g. the listings collected from :func:`build_groups`' groups).
+    """
+    groups: dict[str, Group] = {}
+    for listing in listings:
+        if not listing.brand:
+            continue
+        model = listing.model or _NO_MODEL
+        key = f"{listing.brand}|{model}"
+        group = groups.get(key)
+        if group is None:
+            group = Group(key=key, brand=listing.brand, model=model)
+            groups[key] = group
+        group.listings.append(listing)
+
+    picks: list[CheapestListing] = []
+    for group in groups.values():
+        # Only real models get a median; a per-brand unknown-model bucket mixes
+        # different bikes, so an "average price" for it would be meaningless.
+        if group.model != _NO_MODEL and group.count >= config.MIN_MODEL_COMPARABLES:
+            _compute_stats(group)
+        cheapest = min(group.listings, key=lambda lst: lst.price)
+        picks.append(
+            CheapestListing(
+                brand=group.brand,
+                model=group.model,
+                listing=cheapest,
+                count=group.count,
+                median=group.median,
+                low=group.low,
+                high=group.high,
+            )
+        )
+
+    # Surface the genuine bargains first: models whose cheapest sits well below a
+    # trustworthy median float to the top, then the better-sampled models; lone
+    # one-offs (no median) fall to the end but stay browseable via the filter.
+    picks.sort(
+        key=lambda p: (p.median is not None, p.percent_below or 0.0, p.count),
+        reverse=True,
+    )
+    return picks
 
 
 def _modified_z(price: float, median: float, mad: float) -> float:

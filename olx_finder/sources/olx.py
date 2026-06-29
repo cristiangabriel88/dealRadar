@@ -16,6 +16,7 @@ from typing import Any
 import config
 from olx_finder import cache
 from olx_finder.models import Listing
+from olx_finder.products import Product
 from olx_finder.sources import _http
 from olx_finder.sources.base import MarketplaceSource
 
@@ -35,22 +36,29 @@ class OlxSource(MarketplaceSource):
     def supported_cities(self) -> list[str]:
         return sorted(config.CITIES)
 
-    def search(self, query: str, city: str) -> list[Listing]:
-        city_id = config.CITIES.get(city)
-        if city_id is None:
-            raise ValueError(
-                f"Unknown city {city!r}. Known cities: {', '.join(sorted(config.CITIES))}"
-            )
+    def search(self, product: Product, city: str, distance: int = 0) -> list[Listing]:
+        if city == config.ALL_CITIES:
+            city_id = None  # national search: omit the city_id filter
+        else:
+            city_id = config.CITIES.get(city)
+            if city_id is None:
+                raise ValueError(
+                    f"Unknown city {city!r}. Known cities: {', '.join(sorted(config.CITIES))}"
+                )
 
+        query = product.query
+        # OLX scopes by city + radius server-side, so the cache key must capture
+        # both — otherwise a wider-radius search would reuse a narrower result.
+        cache_key = f"{city}|{distance}"
         if self.use_cache:
-            cached = cache.get(self.name, query, city)
+            cached = cache.get(self.name, query, cache_key)
             if cached is not None:
                 return [self._to_listing(raw) for raw in cached if self._to_listing(raw)]
 
-        raw_listings = self._fetch_all(query, city_id)
+        raw_listings = self._fetch_all(query, city_id, product.olx_category_id, distance)
 
         if self.use_cache:
-            cache.put(self.name, query, city, raw_listings)
+            cache.put(self.name, query, cache_key, raw_listings)
 
         listings = [self._to_listing(raw) for raw in raw_listings]
         return [lst for lst in listings if lst is not None]
@@ -59,20 +67,33 @@ class OlxSource(MarketplaceSource):
     # Fetching
     # --------------------------------------------------------------------- #
 
-    def _fetch_all(self, query: str, city_id: int) -> list[dict[str, Any]]:
-        """Page through the offers API, politely, up to MAX_PAGES."""
+    def _fetch_all(
+        self, query: str, city_id: int | None, category_id: int | None, distance: int = 0
+    ) -> list[dict[str, Any]]:
+        """Page through the offers API, politely, up to MAX_PAGES.
+
+        ``category_id`` scopes the search to a single OLX category when known; if
+        it is ``None`` the search is by ``query`` keyword alone (across categories).
+        ``city_id`` of ``None`` searches nationally. ``distance`` (km) expands the
+        search to a radius around the city — OLX's own ``distance`` filter — and is
+        ignored without a city to anchor it.
+        """
         results: list[dict[str, Any]] = []
         seen_ids: set[Any] = set()
         with _http.make_client({"Accept": "application/json"}) as client:
             for page in range(config.MAX_PAGES):
                 offset = page * config.PAGE_LIMIT
-                params = {
+                params: dict[str, Any] = {
                     "offset": offset,
                     "limit": config.PAGE_LIMIT,
-                    "category_id": config.OLX_BICYCLES_CATEGORY_ID,
                     "query": query,
-                    "city_id": city_id,
                 }
+                if city_id is not None:
+                    params["city_id"] = city_id
+                    if distance and distance > 0:
+                        params["distance"] = distance
+                if category_id is not None:
+                    params["category_id"] = category_id
                 data = _http.get_json(client, config.OLX_OFFERS_ENDPOINT, params)
                 items = data.get("data", []) if data else []
                 if not items:
