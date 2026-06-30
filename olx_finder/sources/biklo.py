@@ -20,6 +20,7 @@ from olx_finder import cache
 from olx_finder.models import Listing
 from olx_finder.products import Product
 from olx_finder.sources import _http
+from olx_finder.sources._util import strip_html
 from olx_finder.sources.base import MarketplaceSource, city_in_scope
 
 # post_type_id of "Vând" (for sale). The bazar also carries wanted/exchange/
@@ -120,6 +121,8 @@ class BikloSource(MarketplaceSource):
             thumbnail=_first_image(ad.get("pictures")),
             raw_title=ad.get("title") or "",
             brand_hint=ad.get("brand") or None,
+            description=strip_html(ad.get("description")),
+            photo_count=len(ad.get("pictures") or []),
         )
 
 

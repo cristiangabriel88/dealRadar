@@ -28,6 +28,12 @@ class Listing:
     brand: str | None = None
     model: str | None = None
 
+    # Free-text body of the listing and how many photos it carries. Only the
+    # richer sources expose these (OLX, biklo); the HTML/Facebook sources leave
+    # them None, and the Sleepers scorer treats a None as "unknown" (no signal).
+    description: str | None = None
+    photo_count: int | None = None
+
     # Which marketplace this listing came from (e.g. "OLX", "Publi24"). Stamped
     # by the aggregation layer; used for the source badge and the "Open on …" link.
     source: str = ""
@@ -68,6 +74,16 @@ class DealResult:
     is_cheapest_in_group: bool
 
     @property
+    def estimated_margin(self) -> float:
+        """Rough resale spread in lei: the typical price minus the asking price.
+
+        A flipper's headline number — buy at ``listing.price``, resell around the
+        comparable median. It's a gross spread (before the fix-up buffer the UI
+        notes separately); negative only if the listing isn't actually a bargain.
+        """
+        return self.median - self.listing.price
+
+    @property
     def explanation(self) -> str:
         """Plain-language, numbers-only reason this is a good deal."""
         price = _fmt(self.listing.price)
@@ -91,6 +107,40 @@ class DealResult:
             f"{self.listing.city}, the typical price is ~{median} {self.listing.currency} "
             f"(range {low}–{high}). This one is {pct}% below the median{cheapest}."
         )
+
+
+@dataclass(slots=True)
+class Sleeper:
+    """A listing that looks like a "seller doesn't know what they have" find.
+
+    Powers the Sleepers view: unlike :class:`DealResult` (which values a listing
+    against same brand+model comparables and so can only judge *correctly labelled*
+    items), a sleeper is scored by neglect/mislabel signals — no recognised brand,
+    a terse title, a minimal description, one photo, motivated-seller wording, and
+    a price well under the whole category's typical level. The signals each fire
+    independently, so a listing with no brand and no description at all can still
+    surface — which is exactly the opportunity the deal engine drops.
+    """
+
+    listing: Listing
+    score: float
+    reasons: list[str]             # human-readable, e.g. "only 1 photo"
+    category_median: float | None  # typical price for the whole product pool
+    components: list[str] = field(default_factory=list)  # premium parts found, if any
+
+    @property
+    def has_brand(self) -> bool:
+        """Whether a known brand was recognised in the title/hint at all."""
+        return self.listing.brand is not None
+
+    @property
+    def percent_below_category(self) -> float | None:
+        """How far under the category's typical price this sits (None if n/a)."""
+        if self.category_median is None or self.category_median <= 0:
+            return None
+        if self.listing.price >= self.category_median:
+            return None
+        return (self.category_median - self.listing.price) / self.category_median
 
 
 @dataclass(slots=True)

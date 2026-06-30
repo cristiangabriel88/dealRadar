@@ -26,6 +26,30 @@ def _offer(offer_id: int, price: float = 1000.0) -> dict[str, Any]:
     }
 
 
+def test_to_listing_extracts_photos_and_description() -> None:
+    raw = {
+        "id": 7,
+        "title": "Trek Marlin",
+        "url": "https://www.olx.ro/d/oferta/7",
+        "params": [{"key": "price", "value": {"value": 1000.0, "currency": "RON"}}],
+        "photos": [{"link": "http://img/{width}x{height}_1.jpg"},
+                   {"link": "http://img/{width}x{height}_2.jpg"}],
+        "description": "<p>Bicicleta <b>buna</b>,\n  putin folosita</p>",
+    }
+    lst = OlxSource(use_cache=False)._to_listing(raw)
+    assert lst.photo_count == 2
+    # Tags become spaces (so words never merge) and whitespace is collapsed; the
+    # field is used only for length-based scoring, so a space before "," is fine.
+    assert lst.description == "Bicicleta buna , putin folosita"
+
+
+def test_to_listing_without_photos_or_description() -> None:
+    # A bare offer (no photos/description keys) -> 0 photos, no description.
+    lst = OlxSource(use_cache=False)._to_listing(_offer(1))
+    assert lst.photo_count == 0
+    assert lst.description is None
+
+
 def test_merge_raw_keeps_city_listings_and_dedups() -> None:
     # primary (city) listings lead; secondary (radius) adds new ids and drops
     # ids already present in primary.

@@ -17,6 +17,17 @@ from __future__ import annotations
 MOD_Z_THRESHOLD: float = -1.5
 MIN_PERCENT_BELOW: float = 0.25  # 25% below the group median
 
+# Rough fix-up cost (lei) subtracted when framing a deal's resale margin, so the
+# "Est. margin" shown is what's left after a typical clean-up/touch-up.
+TOUCHUP_BUFFER_LEI: float = 150.0
+
+# Currency normalization. A few sources price listings in EUR (and Facebook in
+# USD when hit logged-out); every price is converted to RON up front so all
+# comparisons, the noise filter and the UI work in a single currency. Rough
+# rates — bump them as the exchange rate drifts.
+EUR_TO_RON: float = 5.07
+USD_TO_RON: float = 4.35
+
 # A group must have at least this many samples before we trust its median
 # enough to flag deals against it. Small groups are reported but not flagged.
 MIN_SAMPLES: int = 5
@@ -40,6 +51,52 @@ CHEAPEST_PER_BRAND_MAX: int = 20
 CHEAPEST_PER_BRAND_DEFAULT: int = 5
 
 # --------------------------------------------------------------------------- #
+# Sleepers — "the seller doesn't know what they have" scoring
+# --------------------------------------------------------------------------- #
+# The Sleepers view (see olx_finder/sleepers.py) ranks listings the deal engine
+# discards (no recognised brand, so never grouped) by neglect/mislabel signals.
+# Each signal adds its weight ONLY when its data is present, so a missing
+# description or photo count never penalises a listing — it just can't fire that
+# one signal. A listing is shown when its total score reaches SLEEPER_MIN_SCORE.
+SLEEPER_WEIGHT_NO_BRAND: float = 3.0       # no known brand recognised in the title
+SLEEPER_WEIGHT_SHORT_TITLE: float = 1.5    # terse, low-effort title
+SLEEPER_WEIGHT_MIN_DESC: float = 1.5       # minimal/empty description (when known)
+SLEEPER_WEIGHT_FEW_PHOTOS: float = 1.0     # one or no photos (when known)
+SLEEPER_WEIGHT_CHEAP_CATEGORY: float = 3.0  # graded by how far below category median
+SLEEPER_WEIGHT_MOTIVATED: float = 2.0      # "urgent", "mutare", "lichidare", …
+SLEEPER_WEIGHT_PREMIUM_COMPONENT: float = 2.0  # title/desc names a premium part
+
+SLEEPER_SHORT_TITLE_MAX_WORDS: int = 3     # titles with this many words or fewer
+SLEEPER_MIN_DESC_CHARS: int = 40           # descriptions this short count as minimal
+SLEEPER_FEW_PHOTOS_MAX: int = 1            # photo counts at or below this
+# The cheap-vs-category signal starts contributing once a listing is this far
+# below the category median, ramping linearly to its full weight at the cap.
+SLEEPER_MIN_CATEGORY_BELOW: float = 0.30
+SLEEPER_CATEGORY_BELOW_CAP: float = 0.70
+
+SLEEPER_MIN_SCORE: float = 3.0   # minimum total score to surface as a sleeper
+SLEEPER_MAX_RESULTS: int = 60    # hard cap on sleepers materialised per search
+
+# Diacritic-stripped, lowercased tokens that mark a motivated/under-pressure
+# seller (moving, liquidating, needs cash fast) — a soft "may take a low offer".
+MOTIVATED_SELLER_TOKENS: frozenset[str] = frozenset(
+    {
+        "urgent", "urgenta", "mutare", "mut", "mutat", "plec", "plecare",
+        "lichidare", "rapid", "repede", "graba", "imediat",
+    }
+)
+
+# Tokens that mark scrap / broken / for-parts listings. A title hit zeroes the
+# sleeper score so junk doesn't flood the top (frames are already dropped by
+# PART_NOISE_TOKENS' "cadru").
+SLEEPER_JUNK_TOKENS: frozenset[str] = frozenset(
+    {
+        "fier", "vechi", "defect", "dezmembrez", "dezmembrari", "stricat",
+        "nefunctional",
+    }
+)
+
+# --------------------------------------------------------------------------- #
 # Grouping modes (selectable per search; see olx_finder/stats.py)
 # --------------------------------------------------------------------------- #
 # Default strategy when none is specified.
@@ -59,17 +116,38 @@ SMALL_WHEEL_MAX_INCHES: float = 20.0
 # Prices below this (lei) are treated as implausible / placeholder and dropped.
 MIN_PLAUSIBLE_PRICE: float = 100.0
 
-# Titles containing any of these (diacritic-stripped, lowercased) tokens are
-# parts/accessories, not whole bikes, and are excluded from the analysis.
+# "Strong" part tokens: a title containing one is a part/accessory being sold on
+# its own, even if it also names a whole bike ("set piese bicicleta"). These
+# rarely appear in a complete-bike title, so they drop the listing outright.
 PART_NOISE_TOKENS: frozenset[str] = frozenset(
     {
         "cadru",      # frame
-        "roata",      # wheel
-        "roti",       # wheels
         "janta",      # rim
         "jante",      # rims
         "piese",      # parts
         "piesa",
+        "anvelopa",   # tyre
+        "anvelope",   # tyres
+        "cauciuc",    # tyre/rubber
+        "cauciucuri",
+        "pompa",      # pump
+        "casca",      # helmet
+        "suport",     # rack/stand
+        "portbagaj",  # carrier
+    }
+)
+
+# "Component" tokens: words for parts that whole-bike listings ALSO routinely
+# name ("bicicleta MTB 26 frane disc", "roti 29"). On their own they're
+# ambiguous, so a listing with one of these is treated as a part only when
+# nothing else signals a complete bike — no WHOLE_ITEM_TOKENS word and no known
+# brand (see olx_finder/parsing.is_part_listing). This keeps genuine parts out
+# while no longer discarding bikes described by their components — the very
+# minimal-title listings the Sleepers view is meant to surface.
+PART_COMPONENT_TOKENS: frozenset[str] = frozenset(
+    {
+        "roata",      # wheel
+        "roti",       # wheels (also a bike's wheel size: "roti 29")
         "ghidon",     # handlebar
         "furca",      # fork
         "sa",         # saddle (matched as a whole word only)
@@ -78,18 +156,39 @@ PART_NOISE_TOKENS: frozenset[str] = frozenset(
         "lant",       # chain
         "frana",      # brake
         "frane",      # brakes
-        "anvelopa",   # tyre
-        "anvelope",   # tyres
-        "cauciuc",    # tyre/rubber
-        "cauciucuri",
         "schimbator", # derailleur
         "manete",     # shifters/levers
-        "pompa",      # pump
-        "casca",      # helmet
-        "suport",     # rack/stand
-        "portbagaj",  # carrier
     }
 )
+
+# Words that mark a *complete* bike. Their presence overrides an ambiguous
+# component token (so "bicicleta ... frane disc" stays a bike).
+WHOLE_ITEM_TOKENS: frozenset[str] = frozenset(
+    {
+        "bicicleta", "biciclete", "bike", "mtb", "mountain", "cursiera",
+        "trekking", "gravel", "bmx", "downhill", "enduro", "hardtail", "ebike",
+    }
+)
+
+# Premium drivetrain/fork/material keywords. A cheap bike whose title or
+# description names one of these is often worth more than its asking price —
+# exactly the "seller doesn't know what they have" case — so the Sleepers scorer
+# rewards them and shows which were found. Canonical label -> normalized aliases
+# (same shape/whole-word matching as BRANDS; multi-word aliases supported).
+PREMIUM_BIKE_COMPONENTS: dict[str, list[str]] = {
+    "Deore": ["deore"],
+    "SLX": ["slx"],
+    "XT": ["xt", "deore xt"],
+    "XTR": ["xtr"],
+    "GRX": ["grx"],
+    "SRAM": ["sram", "gx eagle", "nx eagle", "gx", "nx"],
+    "RockShox": ["rockshox", "rock shox"],
+    "Fox": ["fox"],
+    "Manitou": ["manitou"],
+    "Carbon": ["carbon"],
+    "Hydraulic disc": ["hidraulic", "hidraulice", "hidraulica"],
+    "Tubeless": ["tubeless"],
+}
 
 # Generic Romanian condition/sale descriptors that follow a model name in any
 # product's listings and must never be mistaken for (a part of) a model. Shared

@@ -131,6 +131,31 @@ def _compute_stats(group: Group) -> None:
     group.high = med + spread
 
 
+# Conversion rates into RON, keyed by the currency tokens the sources emit.
+_RON_RATES: dict[str, float] = {
+    "RON": 1.0,
+    "EUR": config.EUR_TO_RON,
+    "USD": config.USD_TO_RON,
+}
+
+
+def to_ron(listings: list[Listing]) -> list[Listing]:
+    """Convert every listing's price to RON in place and return the list.
+
+    Sources hand back prices in mixed currencies (mostly RON, some EUR, the odd
+    USD). Normalizing to a single currency up front lets the noise filter,
+    grouping/median maths and the UI all reason in RON — and lets the same item
+    reposted at an EUR vs RON price still dedup. Unknown currencies are left
+    untouched (rate 1.0) so an unexpected token never silently mangles a price.
+    """
+    for lst in listings:
+        rate = _RON_RATES.get((lst.currency or "RON").upper(), 1.0)
+        if rate != 1.0:
+            lst.price = round(lst.price * rate, 2)
+        lst.currency = "RON"
+    return listings
+
+
 def dedupe_cross_source(listings: list[Listing]) -> list[Listing]:
     """Collapse the same item reposted on several sites into one listing.
 

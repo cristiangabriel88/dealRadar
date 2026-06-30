@@ -177,26 +177,9 @@
                brand+model found, on whichever marketplace hosts it. -->
         <div class="tabs" id="result-tabs">
           <button type="button" class="tab active" data-tab="deals">Deals · {{ deals|length }}</button>
+          <button type="button" class="tab" data-tab="sleepers">Sleepers · {{ sleepers|length }}</button>
           <button type="button" class="tab" data-tab="cheapest">Cheapest by model · {{ cheapest|length }}</button>
-          <button type="button" class="tab" data-tab="cheapest-brand" id="tab-cheapest-brand" hidden>Cheapest by brand · {{ cheapest_brand|length }}</button>
-        </div>
-
-        <!-- Opt-in "cheapest per brand" lens: the checkbox reveals the tab above
-             and the selector chooses how many of the (up to 20) cheapest cards
-             per brand to show. Both are client-side only — no re-search. -->
-        <div class="filterbar cheapest-brand-controls">
-          <label class="checkbox">
-            <input type="checkbox" id="show-cheapest-brand">
-            <span>Show cheapest per brand<small>spot gems across all models</small></span>
-          </label>
-          <div class="filter-field">
-            <label>Per brand</label>
-            <select id="cheapest-brand-count">
-              {% for n in range(1, config.CHEAPEST_PER_BRAND_MAX + 1) %}
-              <option value="{{ n }}" {{ 'selected' if n == config.CHEAPEST_PER_BRAND_DEFAULT }}>{{ n }}</option>
-              {% endfor %}
-            </select>
-          </div>
+          <button type="button" class="tab" data-tab="cheapest-brand" id="tab-cheapest-brand">Cheapest by brand · {{ cheapest_brand|length }}</button>
         </div>
 
         <div class="tab-panel" data-panel="deals">
@@ -210,6 +193,14 @@
             <label>Model</label>
             <select class="f-model"><option value="">All models</option></select>
           </div>
+          <div class="filter-field">
+            <label>Sort by</label>
+            <select class="f-sort">
+              <option value="">Biggest discount</option>
+              <option value="newest">Newest first</option>
+              <option value="cheapest">Cheapest first</option>
+            </select>
+          </div>
           <button type="button" class="f-reset reset">Reset filter</button>
           <span class="f-count filter-count"></span>
         </div>
@@ -217,7 +208,9 @@
           {% for d in deals %}
           <article class="card"
                    data-brand="{{ d.listing.brand or '' }}"
-                   data-model="{{ d.listing.model or '(unknown model)' }}">
+                   data-model="{{ d.listing.model or '(unknown model)' }}"
+                   data-price="{{ d.listing.price }}"
+                   data-posted="{{ d.listing.posted_at.timestamp()|int if d.listing.posted_at else '' }}">
             <a class="card-link" target="_blank" rel="noopener"
                aria-label="View {{ d.listing.title }} and comparables"
                href="{{ url_for('listing_detail', listing_id=d.listing.id,
@@ -240,10 +233,11 @@
               <div class="price">{{ d.listing.price|lei }} <span class="cur">{{ d.listing.currency }}</span></div>
               <div class="stats">
                 <div><span class="k">Usual price</span><span class="v">{{ d.median|lei }} {{ d.listing.currency }}</span></div>
+                <div><span class="k">Est. margin</span><span class="v margin">+{{ d.estimated_margin|lei }} {{ d.listing.currency }}</span></div>
                 <div><span class="k">Typical range</span><span class="v">{{ d.low|lei }}–{{ d.high|lei }}</span></div>
                 <div><span class="k">Comparables</span><span class="v">{{ d.sample_size }} listings</span></div>
-                <div><span class="k">Group</span><span class="v">{{ d.group.brand }}{% if not d.group.model.startswith('(') %} {{ d.group.model }}{% endif %}</span></div>
               </div>
+              <p class="margin-note">resale spread before ~{{ config.TOUCHUP_BUFFER_LEI|int }} {{ d.listing.currency }} fix-up · {{ d.group.brand }}{% if not d.group.model.startswith('(') %} {{ d.group.model }}{% endif %}</p>
               <div class="meta">
                 <span>{{ d.listing.city }}</span>
                 {% if d.listing.posted_at %}<span>{{ d.listing.posted_at.strftime('%Y-%m-%d') }}</span>{% endif %}
@@ -306,6 +300,70 @@
         {% endif %}
         </div><!-- /deals panel -->
 
+        <div class="tab-panel" data-panel="sleepers" hidden>
+        {% if sleepers %}
+        <p class="panel-help">Listings the Deals tab can't judge — no recognised brand, a terse title, a minimal description, one photo, motivated wording, premium parts named, or a price well under the typical level. Ranked by how much they look like a seller who doesn't know what they have. Description &amp; photo signals come from OLX and biklo.ro only; the other sources lean on the remaining signals.</p>
+        <div class="filterbar" data-grid="sleepers-grid">
+          <div class="filter-field">
+            <label>Sort by</label>
+            <select class="f-sort">
+              <option value="">Best match</option>
+              <option value="newest">Newest first</option>
+              <option value="cheapest">Cheapest first</option>
+            </select>
+          </div>
+        </div>
+        <section class="deals compact-grid" id="sleepers-grid">
+          {% for s in sleepers %}
+          <article class="card"
+                   data-price="{{ s.listing.price }}"
+                   data-posted="{{ s.listing.posted_at.timestamp()|int if s.listing.posted_at else '' }}">
+            <div class="thumb">
+              {% if s.listing.thumbnail %}
+                <img src="{{ s.listing.thumbnail }}" alt="" loading="lazy">
+              {% else %}
+                <div class="noimg">no photo</div>
+              {% endif %}
+              {% if s.percent_below_category %}<span class="badge">−{{ (s.percent_below_category * 100)|round|int }}%</span>{% endif %}
+              {% if not s.has_brand %}<span class="badge cheapest">no brand</span>{% endif %}
+              {% if s.components %}<span class="badge parts">{{ s.components[:2]|join(', ') }}</span>{% endif %}
+              {% if s.listing.source %}<span class="badge source">{{ s.listing.source }}</span>{% endif %}
+            </div>
+            <div class="body">
+              <h3 class="title">{{ s.listing.title }}</h3>
+              <div class="price">{{ s.listing.price|lei }} <span class="cur">{{ s.listing.currency }}</span></div>
+              {% if s.reasons %}
+              <ul class="reasons">
+                {% for r in s.reasons %}<li>{{ r }}</li>{% endfor %}
+              </ul>
+              {% endif %}
+              <div class="stats">
+                <div><span class="k">Sleeper score</span><span class="v">{{ s.score|round(1) }}</span></div>
+                {% if s.category_median is not none %}
+                <div><span class="k">Typical price</span><span class="v">{{ s.category_median|lei }} {{ s.listing.currency }}</span></div>
+                {% endif %}
+                {% if s.listing.photo_count is not none %}
+                <div><span class="k">Photos</span><span class="v">{{ s.listing.photo_count }}</span></div>
+                {% endif %}
+              </div>
+              <div class="meta">
+                <span>{{ s.listing.city }}</span>
+                {% if s.listing.posted_at %}<span>{{ s.listing.posted_at.strftime('%Y-%m-%d') }}</span>{% endif %}
+              </div>
+              <a class="open" href="{{ s.listing.url }}" target="_blank" rel="noopener">Open on {{ s.listing.source or 'site' }} ↗</a>
+            </div>
+          </article>
+          {% endfor %}
+        </section>
+        {% else %}
+        <div class="notice">
+          No sleepers surfaced with the current thresholds. These are the badly-labelled,
+          minimal-effort listings the Deals tab drops — try OLX (richest signals), a
+          wider city/radius, or lower <code>SLEEPER_MIN_SCORE</code> in <code>config.py</code>.
+        </div>
+        {% endif %}
+        </div><!-- /sleepers panel -->
+
         <div class="tab-panel" data-panel="cheapest" hidden>
         {% if cheapest %}
         <p class="panel-help">The single lowest-priced listing of every brand+model found, pooled across all selected marketplaces — each links straight to the site that has it. Models with enough comparables show how far below the usual price the cheapest one sits.</p>
@@ -318,6 +376,14 @@
             <label>Model</label>
             <select class="f-model"><option value="">All models</option></select>
           </div>
+          <div class="filter-field">
+            <label>Sort by</label>
+            <select class="f-sort">
+              <option value="">Best bargain</option>
+              <option value="cheapest">Cheapest first</option>
+              <option value="newest">Newest first</option>
+            </select>
+          </div>
           <button type="button" class="f-reset reset">Reset filter</button>
           <span class="f-count filter-count"></span>
         </div>
@@ -325,7 +391,9 @@
           {% for c in cheapest %}
           <article class="card"
                    data-brand="{{ c.brand or '' }}"
-                   data-model="{{ c.model }}">
+                   data-model="{{ c.model }}"
+                   data-price="{{ c.listing.price }}"
+                   data-posted="{{ c.listing.posted_at.timestamp()|int if c.listing.posted_at else '' }}">
             <div class="thumb">
               {% if c.listing.thumbnail %}
                 <img src="{{ c.listing.thumbnail }}" alt="" loading="lazy">
@@ -337,10 +405,10 @@
               {% if c.listing.source %}<span class="badge source">{{ c.listing.source }}</span>{% endif %}
             </div>
             <div class="body">
+              <div class="card-brand">{{ c.descriptor }}</div>
               <h3 class="title">{{ c.listing.title }}</h3>
               <div class="price">{{ c.listing.price|lei }} <span class="cur">{{ c.listing.currency }}</span></div>
               <div class="stats">
-                <div><span class="k">Model</span><span class="v">{{ c.descriptor }}</span></div>
                 <div><span class="k">Listings found</span><span class="v">{{ c.count }}</span></div>
                 {% if c.median is not none %}
                 <div><span class="k">Usual price</span><span class="v">{{ c.median|lei }} {{ c.listing.currency }}</span></div>
@@ -365,12 +433,35 @@
 
         <div class="tab-panel" data-panel="cheapest-brand" hidden>
         {% if cheapest_brand %}
+        <p class="panel-help">The lowest-priced listings of each brand, any model, pooled across all selected marketplaces — a place to spot underpriced gems the model views split across tiny groups. Choose how many cheapest cards to show per brand and how to order them within each brand.</p>
+        <!-- Per-brand lens controls: how many cheapest cards to show per brand,
+             plus a price/newest re-order. Purely client-side — no re-search. -->
+        <div class="filterbar cheapest-brand-controls" id="cheapest-brand-controls">
+          <div class="filter-field">
+            <label>Per brand</label>
+            <select id="cheapest-brand-count">
+              {% for n in range(1, config.CHEAPEST_PER_BRAND_MAX + 1) %}
+              <option value="{{ n }}" {{ 'selected' if n == config.CHEAPEST_PER_BRAND_DEFAULT }}>{{ n }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="filter-field">
+            <label>Sort by</label>
+            <select id="cheapest-brand-sort">
+              <option value="">Cheapest first</option>
+              <option value="expensive">Highest price</option>
+              <option value="newest">Newest first</option>
+            </select>
+          </div>
+        </div>
         {% for b in cheapest_brand %}
         <section class="brand-block">
           <h3 class="brand-heading">{{ b.brand }} <span class="hint">({{ b.count }} listing{{ '' if b.count == 1 else 's' }})</span></h3>
           <section class="deals compact-grid">
             {% for lst in b.listings %}
-            <article class="card cheapest-brand-card" data-rank="{{ loop.index }}">
+            <article class="card cheapest-brand-card" data-rank="{{ loop.index }}"
+                     data-price="{{ lst.price }}"
+                     data-posted="{{ lst.posted_at.timestamp()|int if lst.posted_at else '' }}">
               <div class="thumb">
                 {% if lst.thumbnail %}
                   <img src="{{ lst.thumbnail }}" alt="" loading="lazy">
@@ -555,6 +646,7 @@
               overlay.hidden = true;
               if (window.initTabs) window.initTabs();
               if (window.initDealFilter) window.initDealFilter();
+              if (window.initSort) window.initSort();
               if (window.initCheapestBrand) window.initCheapestBrand();
               window.scrollTo(0, 0);
             }, 280));
@@ -686,6 +778,8 @@
     var modelSel = bar.querySelector(".f-model");
     var resetBtn = bar.querySelector(".f-reset");
     var countEl = bar.querySelector(".f-count");
+    // Some bars (e.g. Sleepers) carry only a sort control, no brand/model filter.
+    if (!brandSel || !modelSel || !resetBtn || !countEl) return;
     var cards = Array.prototype.slice.call(grid.querySelectorAll(".card"));
 
     // brand -> sorted set of its models, across all cards.
@@ -752,54 +846,103 @@
     });
   };
 
-  // "Cheapest by brand" opt-in lens. The checkbox reveals the (otherwise hidden)
-  // third tab and switches to it; the selector chooses how many of the up-to-20
-  // cheapest cards per brand to show. Purely client-side over rendered cards, so
-  // it never re-fetches. Re-runnable after the #results block is swapped in.
-  window.initCheapestBrand = function () {
-    var checkbox = document.getElementById("show-cheapest-brand");
-    var countSel = document.getElementById("cheapest-brand-count");
-    var tabBtn = document.getElementById("tab-cheapest-brand");
-    var panel = document.querySelector('.tab-panel[data-panel="cheapest-brand"]');
-    if (!checkbox || !countSel || !tabBtn || !panel) return;
+  // Client-side re-ordering of a grid's cards. The default ("") restores the
+  // server's order (biggest discount for Deals, sleeper score for Sleepers);
+  // "newest" sorts by the data-posted epoch (cards with no date sink to the
+  // bottom — most non-OLX sources carry none); "cheapest" sorts by data-price.
+  // Purely DOM reordering, so it composes with the brand/model filter's
+  // show/hide. Re-runnable after the #results block is swapped in.
+  function initSortGrid(gridId, sel) {
+    var grid = document.getElementById(gridId);
+    if (!grid || !sel) return;
+    var cards = Array.prototype.slice.call(grid.querySelectorAll(".card"));
+    cards.forEach(function (c, i) { c.dataset.orig = i; });
 
-    var cards = Array.prototype.slice.call(panel.querySelectorAll(".cheapest-brand-card"));
+    function num(c, key) { var v = parseFloat(c.dataset[key]); return isNaN(v) ? null : v; }
+
+    function apply() {
+      var mode = sel.value;
+      var sorted = cards.slice();
+      if (mode === "newest") {
+        sorted.sort(function (a, b) {
+          var pa = num(a, "posted"), pb = num(b, "posted");
+          if (pa === null && pb === null) return a.dataset.orig - b.dataset.orig;
+          if (pa === null) return 1;
+          if (pb === null) return -1;
+          return pb - pa;
+        });
+      } else if (mode === "cheapest") {
+        sorted.sort(function (a, b) { return (num(a, "price") || 0) - (num(b, "price") || 0); });
+      } else {
+        sorted.sort(function (a, b) { return a.dataset.orig - b.dataset.orig; });
+      }
+      sorted.forEach(function (c) { grid.appendChild(c); });
+    }
+
+    sel.addEventListener("change", apply);
+  }
+
+  window.initSort = function () {
+    document.querySelectorAll(".filterbar[data-grid]").forEach(function (bar) {
+      var sel = bar.querySelector(".f-sort");
+      if (sel) initSortGrid(bar.dataset.grid, sel);
+    });
+  };
+
+  // "Cheapest by brand" lens. The per-brand selector chooses how many of the
+  // up-to-20 cheapest cards to show per brand (by rank, so it always keeps the
+  // cheapest N regardless of display order); the sort selector re-orders the
+  // visible cards within each brand block by price or post date. Purely
+  // client-side over rendered cards, so it never re-fetches. Re-runnable after
+  // the #results block is swapped in.
+  window.initCheapestBrand = function () {
+    var countSel = document.getElementById("cheapest-brand-count");
+    var sortSel = document.getElementById("cheapest-brand-sort");
+    var panel = document.querySelector('.tab-panel[data-panel="cheapest-brand"]');
+    if (!countSel || !sortSel || !panel) return;
+
+    // Each brand renders its own grid; sort within a block, not across brands.
+    var grids = Array.prototype.slice.call(panel.querySelectorAll(".brand-block .deals"));
+
+    function num(c, key) { var v = parseFloat(c.dataset[key]); return isNaN(v) ? null : v; }
 
     function applyCount() {
       var n = parseInt(countSel.value, 10) || 1;
-      cards.forEach(function (c) {
+      panel.querySelectorAll(".cheapest-brand-card").forEach(function (c) {
         var rank = parseInt(c.dataset.rank, 10) || 1;
         c.style.display = rank <= n ? "" : "none";
       });
     }
 
-    function activate(name) {
-      document.querySelectorAll("#result-tabs .tab").forEach(function (t) {
-        t.classList.toggle("active", t.dataset.tab === name);
-      });
-      document.querySelectorAll(".tab-panel").forEach(function (p) {
-        p.hidden = p.dataset.panel !== name;
+    function applySort() {
+      var mode = sortSel.value;
+      grids.forEach(function (grid) {
+        var cards = Array.prototype.slice.call(grid.querySelectorAll(".cheapest-brand-card"));
+        cards.sort(function (a, b) {
+          if (mode === "newest") {
+            var pa = num(a, "posted"), pb = num(b, "posted");
+            if (pa === null && pb === null) return a.dataset.rank - b.dataset.rank;
+            if (pa === null) return 1;
+            if (pb === null) return -1;
+            return pb - pa;
+          }
+          if (mode === "expensive") return (num(b, "price") || 0) - (num(a, "price") || 0);
+          // "" — cheapest first, the server's per-brand rank order.
+          return a.dataset.rank - b.dataset.rank;
+        });
+        cards.forEach(function (c) { grid.appendChild(c); });
       });
     }
 
-    checkbox.addEventListener("change", function () {
-      if (checkbox.checked) {
-        tabBtn.hidden = false;
-        activate("cheapest-brand");
-      } else {
-        var wasActive = tabBtn.classList.contains("active");
-        tabBtn.hidden = true;
-        if (wasActive) activate("deals");
-      }
-    });
-
     countSel.addEventListener("change", applyCount);
+    sortSel.addEventListener("change", applySort);
     applyCount();
   };
 
   initTabs();
   initDealFilter();
+  initSort();
   initCheapestBrand();
-  </script>
+</script>
 </body>
 </html>

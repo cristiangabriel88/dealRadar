@@ -13,6 +13,7 @@ import config
 from olx_finder.models import Listing, _fmt
 from olx_finder.products import PRODUCTS, Product, get_product
 from olx_finder.products import DEFAULT_PRODUCT
+from olx_finder.sleepers import find_sleepers
 from olx_finder.sources import (
     AnuntulSource,
     BikloSource,
@@ -31,6 +32,7 @@ from olx_finder.stats import (
     dedupe_cross_source,
     flag_deals,
     get_mode,
+    to_ron,
 )
 
 app = Flask(
@@ -107,7 +109,9 @@ def aggregate(
             else:
                 pooled.extend(listings)
 
-    return dedupe_cross_source(pooled), errors
+    # Normalize every price to RON before dedup/stats so the whole pipeline and
+    # the UI work in a single currency (and EUR/RON reposts of one item dedup).
+    return dedupe_cross_source(to_ron(pooled)), errors
 
 
 @app.template_filter("lei")
@@ -170,6 +174,7 @@ def index() -> str:
         "model_groups": [],
         "cheapest": [],
         "cheapest_brand": [],
+        "sleepers": [],
         "listing_count": 0,
         "error": None,
         "source_errors": [],
@@ -194,12 +199,16 @@ def index() -> str:
             cheapest = cheapest_by_model(pooled)
             # Cross-platform "cheapest listings per brand" view (any model).
             cheapest_brand = cheapest_by_brand(pooled)
+            # Sleepers: scored over the FULL deduped listings (NOT `pooled`,
+            # which excludes the unbranded listings that are the whole point).
+            sleepers = find_sleepers(listings, product)
             context.update(
                 listing_count=len(listings),
                 groups=groups,
                 model_groups=model_groups,
                 cheapest=cheapest,
                 cheapest_brand=cheapest_brand,
+                sleepers=sleepers,
                 deals=deals,
                 # Partial failures: show deals from the sources that worked.
                 source_errors=source_errors,

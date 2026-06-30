@@ -43,6 +43,9 @@ def test_flags_clear_low_outlier() -> None:
     assert deal.is_cheapest_in_group is True
     assert deal.percent_below > 0.4  # ~50% below median of 2000
     assert deal.mod_z <= -1.5
+    # Profit framing: resale spread = typical (median) − asking.
+    assert deal.estimated_margin == deal.median - deal.listing.price
+    assert deal.estimated_margin == 1000  # median 2000 − asking 1000
 
 
 def test_below_min_samples_not_flagged() -> None:

@@ -282,17 +282,8 @@ main { max-width: 1180px; margin: 0 auto; padding: 26px 26px 72px; }
 .filterbar .reset:hover { border-color: var(--signal); color: var(--signal); }
 .filter-count { color: var(--muted); font-family: var(--mono); font-size: 11px; letter-spacing: .04em; margin-left: auto; align-self: center; }
 
-/* "Cheapest by brand" lens: opt-in control row + per-brand card blocks. */
+/* "Cheapest by brand" lens: per-brand control row + per-brand card blocks. */
 .cheapest-brand-controls { align-items: center; }
-.cheapest-brand-controls .checkbox {
-  display: flex; align-items: center; gap: 10px;
-  background: var(--panel-2); border: 1px solid var(--hair);
-  border-radius: var(--r); padding: 9px 12px; cursor: pointer;
-  color: var(--text); font-size: 14px; font-family: var(--disp);
-}
-.cheapest-brand-controls .checkbox input { width: 18px; height: 18px; accent-color: var(--signal); cursor: pointer; }
-.cheapest-brand-controls .checkbox span { display: flex; flex-direction: column; line-height: 1.2; }
-.cheapest-brand-controls .checkbox small { color: var(--muted); font-family: var(--mono); font-size: 10px; letter-spacing: .04em; }
 .brand-block { margin-bottom: 32px; }
 .brand-heading {
   font-family: var(--mono); font-size: 13px; letter-spacing: .08em;
@@ -394,6 +385,18 @@ main { max-width: 1180px; margin: 0 auto; padding: 26px 26px 72px; }
   border: 1px solid var(--hair); font-size: 10px; font-weight: 500;
   letter-spacing: .08em; box-shadow: none;
 }
+/* Premium-parts badge on Sleeper cards (bottom-right, out of the others' way). */
+.badge.parts {
+  top: auto; bottom: 10px; right: 10px; left: auto;
+  background: rgba(8, 11, 16, .7); color: var(--signal);
+  border: 1px solid color-mix(in srgb, var(--signal) 40%, transparent);
+  font-size: 10px; font-weight: 600; letter-spacing: .06em; box-shadow: none;
+  text-transform: uppercase;
+}
+
+/* Deal profit framing. */
+.stats .v.margin { color: var(--signal); }
+.margin-note { margin: 0; color: var(--muted); font-family: var(--mono); font-size: 10px; letter-spacing: .04em; }
 
 .body { padding: 15px 16px 17px; display: flex; flex-direction: column; gap: 10px; }
 
@@ -415,6 +418,21 @@ main { max-width: 1180px; margin: 0 auto; padding: 26px 26px 72px; }
   border-left: 2px solid color-mix(in srgb, var(--signal) 45%, transparent);
   padding: 9px 11px; border-radius: 0 8px 8px 0;
 }
+/* Sleeper "why it stood out" list — same signal-callout language as .why. */
+.reasons {
+  margin: 2px 0 0; padding: 9px 11px 9px 24px; list-style: none;
+  font-size: 12.5px; line-height: 1.5;
+  color: color-mix(in srgb, var(--signal) 70%, var(--text));
+  background: var(--signal-dim);
+  border-left: 2px solid color-mix(in srgb, var(--signal) 45%, transparent);
+  border-radius: 0 8px 8px 0;
+}
+.reasons li { position: relative; }
+.reasons li::before {
+  content: "›"; position: absolute; left: -13px;
+  color: color-mix(in srgb, var(--signal) 60%, transparent);
+}
+
 .meta { display: flex; gap: 14px; color: var(--muted); font-family: var(--mono); font-size: 11px; letter-spacing: .03em; }
 
 .open {
@@ -455,6 +473,14 @@ main { max-width: 1180px; margin: 0 auto; padding: 26px 26px 72px; }
 }
 .compact-grid .badge { font-size: 11px; padding: 3px 7px; }
 .compact-grid .badge.cheapest, .compact-grid .badge.source { font-size: 9px; padding: 2px 6px; }
+
+/* Brand+model label heading on "Cheapest by model" cards (mirrors the
+   .brand-heading used to title each block on the "Cheapest by brand" view). */
+.card-brand {
+  font-family: var(--mono); font-size: 11px; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--signal);
+  line-height: 1.2; margin-bottom: -1px;
+}
 
 /* comparable listings: row list (image left, content right) */
 .comp-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 44px; }

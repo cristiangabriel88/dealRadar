@@ -37,6 +37,18 @@ class Product:
     part_noise_tokens: frozenset[str]
     model_stopwords: frozenset[str]
 
+    # Parts handling. ``part_noise_tokens`` (above) are "strong" — always a part.
+    # ``part_component_tokens`` are ambiguous component words that whole-item
+    # listings also use; they only mark a part when no ``whole_item_tokens`` word
+    # and no known brand is present. Leave both empty to keep the strict
+    # "any part token => a part" behaviour (e.g. guitars).
+    part_component_tokens: frozenset[str] = frozenset()
+    whole_item_tokens: frozenset[str] = frozenset()
+
+    # Premium component vocabulary (canonical label -> aliases) the Sleepers
+    # scorer rewards. Empty => no component signal for this product.
+    premium_components: dict[str, list[str]] = field(default_factory=dict)
+
     # Comparison-pool guards (used by the "guarded" grouping mode). Kids/junior
     # items are dropped from the adult pool; ``small_wheel_max_inches`` is the
     # bike-only wheel-size guard (None => no size guard for this product).
@@ -57,6 +69,9 @@ BIKES = Product(
     brands=config.BRANDS,
     part_noise_tokens=config.PART_NOISE_TOKENS,
     model_stopwords=config.BIKE_MODEL_STOPWORDS,
+    part_component_tokens=config.PART_COMPONENT_TOKENS,
+    whole_item_tokens=config.WHOLE_ITEM_TOKENS,
+    premium_components=config.PREMIUM_BIKE_COMPONENTS,
     kids_title_tokens=config.KIDS_TITLE_TOKENS,
     small_wheel_max_inches=config.SMALL_WHEEL_MAX_INCHES,
     extra_sources=("biklo.ro",),

@@ -170,9 +170,60 @@ def _alias_in_title(norm_title: str, alias: str) -> bool:
 
 
 def is_part_listing(title: str, product: Product = BIKES) -> bool:
-    """True when the title indicates parts/accessories rather than a whole item."""
+    """True when the title indicates parts/accessories rather than a whole item.
+
+    A "strong" part token (``part_noise_tokens``) marks a part outright. An
+    ambiguous "component" token (``part_component_tokens``) — a word whole-item
+    listings also use, e.g. "frane" or "roti 29" — marks a part only when nothing
+    signals a complete item: no ``whole_item_tokens`` word and no known brand.
+    Products that leave the component/whole-item sets empty (e.g. guitars) keep
+    the strict "any part token => a part" behaviour.
+    """
     tokens = set(normalize(title).split())
-    return bool(tokens & product.part_noise_tokens)
+    if tokens & product.part_noise_tokens:
+        return True
+    if product.part_component_tokens and (tokens & product.part_component_tokens):
+        if tokens & product.whole_item_tokens:
+            return False
+        if extract_brand_model(title, product=product)[0] is not None:
+            return False
+        return True
+    return False
+
+
+# Premium-component alias index, built lazily and cached per product (same shape
+# and whole-word/phrase matching as the brand index).
+_PREMIUM_CACHE: dict[str, list[tuple[str, str]]] = {}
+
+
+def _premium_index(product: Product) -> list[tuple[str, str]]:
+    index = _PREMIUM_CACHE.get(product.key)
+    if index is None:
+        index = _build_alias_index(product.premium_components)
+        _PREMIUM_CACHE[product.key] = index
+    return index
+
+
+def find_premium_components(
+    title: str, description: str | None = None, product: Product = BIKES
+) -> list[str]:
+    """Canonical premium-component labels named in the title/description.
+
+    Scans both fields (a neglected listing often buries the good parts in the
+    body) for any of ``product.premium_components``. Each component is reported
+    once, longest-alias-first so a multi-word alias wins over its substrings.
+    Returns [] when the product defines no premium vocabulary.
+    """
+    text = normalize(f"{title} {description or ''}")
+    found: list[str] = []
+    seen: set[str] = set()
+    for alias, canonical in _premium_index(product):
+        if canonical in seen:
+            continue
+        if _alias_in_title(text, alias):
+            seen.add(canonical)
+            found.append(canonical)
+    return found
 
 
 # Plausible bicycle wheel diameters (inches) to avoid matching frame sizes etc.

@@ -24,6 +24,7 @@ from olx_finder.stats import (
     build_model_groups,
     flag_deals,
     get_mode,
+    to_ron,
 )
 
 # Make stdout UTF-8 on Windows consoles (diacritics in titles/cities).
@@ -66,7 +67,7 @@ def main() -> None:
         product = replace(product, query=args.query)
     source = OlxSource(use_cache=not args.no_cache)
     print(f"Fetching '{product.query}' ({product.key}) in {args.city} from {source.name} ...")
-    listings = source.search(product, args.city)
+    listings = to_ron(source.search(product, args.city))
     print(
         f"Fetched {len(listings)} listings.  Mode: {mode.key} — {mode.label}  "
         f"Match: {args.match} — {MATCH_LEVELS[args.match]}\n"

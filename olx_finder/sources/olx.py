@@ -18,6 +18,7 @@ from olx_finder import cache
 from olx_finder.models import Listing
 from olx_finder.products import Product
 from olx_finder.sources import _http
+from olx_finder.sources._util import strip_html
 from olx_finder.sources.base import MarketplaceSource
 
 
@@ -168,6 +169,8 @@ class OlxSource(MarketplaceSource):
             raw_title=raw.get("title", ""),
             brand_hint=self._extract_brand_hint(raw),
             wheel_inches=self._extract_wheel_inches(raw),
+            description=strip_html(raw.get("description")),
+            photo_count=len(raw.get("photos") or []),
         )
 
     @staticmethod
