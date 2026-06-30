@@ -153,3 +153,62 @@ parsing, stats, or the UI needs to change.
 A site that only makes sense for one product type (e.g. the bike-only
 `biklo.ro`) goes in `PRODUCT_SOURCES` instead, keyed by product. Its checkbox
 then appears only when that product is selected in the dropdown.
+
+## Daily price history (background job)
+
+The live app is *snapshot-only* — it values a listing against the prices that
+happen to be live right now. The **daily job** builds a price history over time
+so a listing can be judged against the **average of recent prices** instead.
+
+Once a day it scrapes **bikes only**, from every source **except Facebook
+Marketplace**, for Bucharest + 100 km, and appends what it sees to a durable
+SQLite store (`history.db`, separate from the throwaway `cache.db`). Each
+observation is stamped with the date and compared against the trailing
+`HISTORY_WINDOW_DAYS` (30) of same brand+model prices; rows priced far enough
+below that median are flagged as deals (`is_deal = 1`). The stack — and the
+trustworthiness of the averages — grows with each run.
+
+Run it manually:
+
+```
+python -m olx_finder.daily
+```
+
+The knobs live in `config.py` (`HISTORY_DB_PATH`, `HISTORY_WINDOW_DAYS`,
+`HISTORY_MIN_OBSERVATIONS`, `HISTORY_CITY`, `HISTORY_DISTANCE_KM`); the deal
+threshold reuses `MIN_PERCENT_BELOW`.
+
+### Seeing the trend and margins
+
+Once a few days have accumulated, read the stack back as a report — per
+brand+model it shows the day-by-day price band (count / min / median / max), how
+the median has drifted over the window, and the flip margin of buying the current
+cheapest and reselling at the recent typical price (gross, net after the
+condition-based fix-up buffer, and ROI — the same math as the live app's deal
+cards):
+
+```
+python -m olx_finder.history_report                 # top models by gross margin
+python -m olx_finder.history_report --brand Trek     # drill into one brand
+python -m olx_finder.history_report --model marlin --days 60 --top 30
+```
+
+Because brand+model grouping is loose, a pool can mix sub-models (an alloy and a
+carbon "Giant TCR"). Before computing a model's typical price and margins the
+report trims off-band prices by their modified z-score (median + MAD), and notes
+how many it dropped (`N off-band filtered`). Tiny samples are left untouched. The
+guard is tunable via `HISTORY_TRIM_MOD_Z` / `HISTORY_TRIM_MIN_SAMPLE` in
+`config.py`.
+
+### Running it daily on a Raspberry Pi (cron)
+
+After `pip install -r requirements.txt` on the Pi, add a once-a-day cron entry
+(`crontab -e`) — here at 03:00, logging to a file:
+
+```cron
+0 3 * * * cd /home/pi/dealRadar && /usr/bin/python3 -m olx_finder.daily >> /home/pi/dealRadar/daily.log 2>&1
+```
+
+It needs no browser and no display (Facebook is excluded), so it runs headless
+in the background. The web UI (`python app.py`) is unaffected and can later read
+`history.db` if you want to surface the accumulated history.

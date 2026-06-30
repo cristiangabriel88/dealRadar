@@ -1,6 +1,8 @@
 __pycache__/
 *.pyc
 cache.db
+history.db
+daily.log
 .fb_profile/
 .pytest_cache/
 .venv/

@@ -666,6 +666,33 @@ CACHE_DB_PATH: str = "cache.db"
 CACHE_TTL_MINUTES: int = 5
 
 # --------------------------------------------------------------------------- #
+# Daily price-history job (olx_finder/daily.py + olx_finder/history.py)
+# --------------------------------------------------------------------------- #
+# A once-a-day background scrape (run by cron on the Raspberry Pi) appends what
+# it sees into a DURABLE store, building a per-brand+model price stack over time
+# so a new listing can be judged against the average of recent prices — not just
+# the current snapshot the live app uses. This is a separate file from the
+# throwaway TTL cache above (deleting cache.db to clear the cache must not wipe
+# the accumulated history).
+HISTORY_DB_PATH: str = "history.db"
+# "Recent prices" window: a listing is compared against same brand+model
+# observations from the trailing this-many days (its own day excluded).
+HISTORY_WINDOW_DAYS: int = 30
+# Need at least this many comparable observations before an average is trusted
+# enough to flag a deal (mirrors MIN_MODEL_COMPARABLES for the snapshot views).
+HISTORY_MIN_OBSERVATIONS: int = 3
+# Scope of the daily scrape (Bucharest plus this radius in km).
+HISTORY_CITY: str = "Bucuresti"
+HISTORY_DISTANCE_KM: int = 100
+# Within-band guard for the history report: brand+model grouping is loose, so a
+# pool can mix sub-models (e.g. an alloy and a carbon "Giant TCR"). Before the
+# report computes a model's typical price and margins, prices whose modified
+# z-score exceeds this are trimmed as off-band. Needs >= this many observations
+# to trust the spread estimate (a tiny sample is never trimmed).
+HISTORY_TRIM_MOD_Z: float = 3.5
+HISTORY_TRIM_MIN_SAMPLE: int = 4
+
+# --------------------------------------------------------------------------- #
 # Cities -> OLX city_id (all Romanian cities; discovered from the live API).
 # Covers Romania's municipalities and towns; the value is the OLX numeric
 # city_id used by the offers API. To add a locality, search it on olx.ro and
