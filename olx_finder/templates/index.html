@@ -178,6 +178,7 @@
         <div class="tabs" id="result-tabs">
           <button type="button" class="tab active" data-tab="deals">Deals · {{ deals|length }}</button>
           <button type="button" class="tab" data-tab="sleepers">Sleepers · {{ sleepers|length }}</button>
+          <button type="button" class="tab" data-tab="defects">Defect · {{ defects|length }}</button>
           <button type="button" class="tab" data-tab="cheapest">Cheapest by model · {{ cheapest|length }}</button>
           <button type="button" class="tab" data-tab="cheapest-brand" id="tab-cheapest-brand">Cheapest by brand · {{ cheapest_brand|length }}</button>
         </div>
@@ -360,6 +361,57 @@
         </div>
         {% endif %}
         </div><!-- /sleepers panel -->
+
+        <div class="tab-panel" data-panel="defects" hidden>
+        {% if defects %}
+        <p class="panel-help">Every listing — any brand or model — whose own title or description admits a fault ("defect", "nu merge", "ruginit", "de reparat", …). These are the cheap fix-up candidates the seller has already discounted in their head. Description signals come from OLX and biklo.ro; the other sources are judged on their titles. Cheapest first.</p>
+        <div class="filterbar" data-grid="defects-grid">
+          <div class="filter-field">
+            <label>Sort by</label>
+            <select class="f-sort">
+              <option value="">Cheapest first</option>
+              <option value="newest">Newest first</option>
+            </select>
+          </div>
+        </div>
+        <section class="deals compact-grid" id="defects-grid">
+          {% for d in defects %}
+          <article class="card"
+                   data-price="{{ d.listing.price }}"
+                   data-posted="{{ d.listing.posted_at.timestamp()|int if d.listing.posted_at else '' }}">
+            <div class="thumb">
+              {% if d.listing.thumbnail %}
+                <img src="{{ d.listing.thumbnail }}" alt="" loading="lazy">
+              {% else %}
+                <div class="noimg">no photo</div>
+              {% endif %}
+              <span class="badge defect">{{ d.signals[0] }}</span>
+              {% if d.listing.source %}<span class="badge source">{{ d.listing.source }}</span>{% endif %}
+            </div>
+            <div class="body">
+              <h3 class="title">{{ d.listing.title }}</h3>
+              <div class="price">{{ d.listing.price|lei }} <span class="cur">{{ d.listing.currency }}</span></div>
+              <ul class="reasons">
+                {% for s in d.signals[:4] %}<li>“{{ s }}”</li>{% endfor %}
+              </ul>
+              <div class="meta">
+                <span>{{ d.listing.city }}</span>
+                {% if d.listing.posted_at %}<span>{{ d.listing.posted_at.strftime('%Y-%m-%d') }}</span>{% endif %}
+              </div>
+              <a class="open" href="{{ d.listing.url }}" target="_blank" rel="noopener">Open on {{ d.listing.source or 'site' }} ↗</a>
+            </div>
+          </article>
+          {% endfor %}
+        </section>
+        {% else %}
+        <div class="notice">
+          No listings admitting a fault surfaced. These are items whose title or
+          description names a problem ("defect", "nu merge", …) — try OLX (richest
+          signals) or a wider city/radius, or tune <code>DEFECT_TOKENS</code> in
+          <code>config.py</code>.
+        </div>
+        {% endif %}
+        </div><!-- /defects panel -->
 
         <div class="tab-panel" data-panel="cheapest" hidden>
         {% if cheapest %}

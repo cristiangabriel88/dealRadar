@@ -410,6 +410,14 @@ main { max-width: 1180px; margin: 0 auto; padding: 26px 26px 72px; }
   color: #f0b34a;
   border-color: color-mix(in srgb, #f0b34a 45%, transparent);
 }
+/* Defect badge (top-left, in the primary badge slot): the fault word a listing
+   admits to. Amber warning tone, shared with the needs-work condition. */
+.badge.defect {
+  background: rgba(8, 11, 16, .82); color: #f0b34a;
+  border: 1px solid color-mix(in srgb, #f0b34a 45%, transparent);
+  font-size: 11px; font-weight: 600; letter-spacing: .04em;
+  box-shadow: none; text-transform: uppercase;
+}
 
 /* Deal profit framing. */
 .stats .v.margin { color: var(--signal); }

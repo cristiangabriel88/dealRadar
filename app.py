@@ -14,6 +14,7 @@ from olx_finder.models import Listing, _fmt
 from olx_finder.parsing import normalize
 from olx_finder.products import PRODUCTS, Product, get_product
 from olx_finder.products import DEFAULT_PRODUCT
+from olx_finder.defects import find_defects
 from olx_finder.sleepers import find_sleepers
 from olx_finder.sources import (
     AnuntulSource,
@@ -187,6 +188,7 @@ def index() -> str:
         "cheapest": [],
         "cheapest_brand": [],
         "sleepers": [],
+        "defects": [],
         "listing_count": 0,
         "error": None,
         "source_errors": [],
@@ -214,6 +216,9 @@ def index() -> str:
             # Sleepers: scored over the FULL deduped listings (NOT `pooled`,
             # which excludes the unbranded listings that are the whole point).
             sleepers = find_sleepers(listings, product)
+            # Defects: every listing that admits a fault, over the FULL deduped
+            # set (like sleepers), brand/model-agnostic.
+            defects = find_defects(listings, product)
             context.update(
                 listing_count=len(listings),
                 groups=groups,
@@ -221,6 +226,7 @@ def index() -> str:
                 cheapest=cheapest,
                 cheapest_brand=cheapest_brand,
                 sleepers=sleepers,
+                defects=defects,
                 deals=deals,
                 # Partial failures: show deals from the sources that worked.
                 source_errors=source_errors,

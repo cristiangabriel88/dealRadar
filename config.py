@@ -110,6 +110,51 @@ SLEEPER_JUNK_TOKENS: frozenset[str] = frozenset(
 )
 
 # --------------------------------------------------------------------------- #
+# Defect detection — the "Defect" tab
+# --------------------------------------------------------------------------- #
+# Listings whose title OR description signals a fault. The Defect tab pools these
+# regardless of brand/model (a broken item is a flip candidate whoever made it),
+# the inverse of the Deals/Cheapest views' brand grouping. Generic Romanian fault
+# wording; diacritic-stripped, lowercased, matched on whole words. Distinct from
+# CONDITION_NEEDS_WORK_TOKENS (which only sizes a deal's fix-up buffer): this set
+# is the membership test for the tab and adds the multi-word phrases too.
+DEFECT_TOKENS: frozenset[str] = frozenset(
+    {
+        "defect", "defecta", "defecte", "defectiune", "defectiuni",
+        "stricat", "stricata", "stricate",
+        "nefunctional", "nefunctionala", "nefunctionale",
+        "ruginit", "ruginita", "ruginite",
+        "fisurat", "fisurata", "fisurate",
+        "crapat", "crapata", "crapate",
+        "indoit", "indoita", "indoite",
+        "blocat", "blocata", "blocate",
+        "spart", "sparta", "sparte",
+        "deteriorat", "deteriorata", "deteriorate",
+        "reparat", "reparata", "reparatii", "reparatie",
+        "problema", "probleme",
+    }
+)
+
+# Multi-word fault phrases ("nu merge", "nu functioneaza"). Matched as a
+# contiguous whole-word sequence in the normalized title/description, so the
+# single-word DEFECT_TOKENS can't express them. Each must be normalized form.
+DEFECT_PHRASES: frozenset[str] = frozenset(
+    {
+        "nu merge", "nu mai merge",
+        "nu functioneaza", "nu mai functioneaza", "nu e functional",
+        "nu este functional",
+        "nu porneste", "nu mai porneste",
+        "nu tine", "nu trage", "nu schimba", "nu franeaza",
+        "are probleme", "are o problema",
+        "de reparat", "pentru reparat", "trebuie reparat",
+        "necesita reparatii",
+    }
+)
+
+# Hard cap on defect listings materialised per search.
+DEFECT_MAX_RESULTS: int = 60
+
+# --------------------------------------------------------------------------- #
 # Grouping modes (selectable per search; see olx_finder/stats.py)
 # --------------------------------------------------------------------------- #
 # Default strategy when none is specified.

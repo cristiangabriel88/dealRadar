@@ -192,6 +192,21 @@ class Sleeper:
 
 
 @dataclass(slots=True)
+class Defect:
+    """A listing whose title/description names a fault, for the Defect tab.
+
+    Brand- and model-agnostic by design: where :class:`DealResult` and
+    :class:`CheapestListing` only reason about *grouped, comparable* items, a
+    defect is judged purely on the fault wording in its own text (see
+    ``config.DEFECT_TOKENS`` / ``DEFECT_PHRASES``). The matched ``signals`` are
+    shown on the card so it's clear what flagged it.
+    """
+
+    listing: Listing
+    signals: list[str]   # fault wording found, e.g. ["defect", "nu merge"]
+
+
+@dataclass(slots=True)
 class CheapestListing:
     """The single lowest-priced current listing for one brand+model.
 
