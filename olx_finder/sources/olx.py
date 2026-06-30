@@ -57,6 +57,16 @@ class OlxSource(MarketplaceSource):
 
         raw_listings = self._fetch_all(query, city_id, product.olx_category_id, distance)
 
+        # A radius result must be a superset of the city-only one: OLX returns at
+        # most a capped, recency-sorted window, and a wider radius has many more
+        # total offers, so the city's own listings get pushed out of that window
+        # (a +100km search would otherwise show fewer of the city's deals, not
+        # more). Merge in the distance-0 page so the city's listings are always
+        # kept alongside the surrounding-area ones.
+        if distance and distance > 0 and city_id is not None:
+            base = self._fetch_all(query, city_id, product.olx_category_id, 0)
+            raw_listings = self._merge_raw(base, raw_listings)
+
         if self.use_cache:
             cache.put(self.name, query, cache_key, raw_listings)
 
@@ -116,6 +126,25 @@ class OlxSource(MarketplaceSource):
 
                 time.sleep(config.REQUEST_DELAY)  # be polite between pages
         return results
+
+    @staticmethod
+    def _merge_raw(
+        primary: list[dict[str, Any]], secondary: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Concatenate two raw-offer lists, dropping later duplicates by ``id``.
+
+        ``primary`` comes first so the city's own listings lead; offers already
+        seen there are skipped when they recur in ``secondary``.
+        """
+        seen: set[Any] = set()
+        merged: list[dict[str, Any]] = []
+        for item in [*primary, *secondary]:
+            item_id = item.get("id")
+            if item_id in seen:
+                continue
+            seen.add(item_id)
+            merged.append(item)
+        return merged
 
     # --------------------------------------------------------------------- #
     # JSON -> Listing

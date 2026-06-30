@@ -57,6 +57,19 @@ def cities_within(selected_city: str, distance_km: int) -> list[str]:
     ]
 
 
+def within_reach(origin_city: str, other_city: str, distance_km: int) -> bool:
+    """Whether ``other_city`` lies within ``distance_km`` (crow-flies) of ``origin_city``.
+
+    Both cities must have known coordinates in :data:`config.MAIN_CITIES`;
+    returns ``False`` otherwise.
+    """
+    a = config.MAIN_CITIES.get(origin_city)
+    b = config.MAIN_CITIES.get(other_city)
+    if a is None or b is None:
+        return False
+    return _haversine(a, b) <= distance_km
+
+
 def city_in_scope(selected_city: str, distance_km: int, listing_city: str | None) -> bool:
     """Whether a client-filtered listing falls within the selected search scope.
 

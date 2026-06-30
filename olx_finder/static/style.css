@@ -282,6 +282,25 @@ main { max-width: 1180px; margin: 0 auto; padding: 26px 26px 72px; }
 .filterbar .reset:hover { border-color: var(--signal); color: var(--signal); }
 .filter-count { color: var(--muted); font-family: var(--mono); font-size: 11px; letter-spacing: .04em; margin-left: auto; align-self: center; }
 
+/* "Cheapest by brand" lens: opt-in control row + per-brand card blocks. */
+.cheapest-brand-controls { align-items: center; }
+.cheapest-brand-controls .checkbox {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--panel-2); border: 1px solid var(--hair);
+  border-radius: var(--r); padding: 9px 12px; cursor: pointer;
+  color: var(--text); font-size: 14px; font-family: var(--disp);
+}
+.cheapest-brand-controls .checkbox input { width: 18px; height: 18px; accent-color: var(--signal); cursor: pointer; }
+.cheapest-brand-controls .checkbox span { display: flex; flex-direction: column; line-height: 1.2; }
+.cheapest-brand-controls .checkbox small { color: var(--muted); font-family: var(--mono); font-size: 10px; letter-spacing: .04em; }
+.brand-block { margin-bottom: 32px; }
+.brand-heading {
+  font-family: var(--mono); font-size: 13px; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--text); margin: 0 0 14px;
+  padding-bottom: 8px; border-bottom: 1px solid var(--hair);
+}
+.brand-heading .hint { color: var(--muted); font-size: 11px; text-transform: none; letter-spacing: 0; }
+
 /* ============================================================
    Summary / notices / empty
    ============================================================ */
@@ -320,6 +339,9 @@ main { max-width: 1180px; margin: 0 auto; padding: 26px 26px 72px; }
 .deals {
   display: grid; gap: 18px;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  /* Equalise every row to the tallest card so all product cards share one
+     height; the thumbnail (below) absorbs the difference per card. */
+  grid-auto-rows: 1fr;
   margin-bottom: 44px;
 }
 .card {
@@ -339,6 +361,13 @@ main { max-width: 1180px; margin: 0 auto; padding: 26px 26px 72px; }
 
 .thumb { position: relative; aspect-ratio: 4 / 3; background: var(--panel-2); }
 .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* Uniform-height cards: the card fills its (equalised) grid cell, the body
+   keeps its natural height, and the thumbnail flexes to take up the rest —
+   squishing on cards whose text runs long so every card lines up. */
+.deals .card { height: 100%; }
+.deals .thumb { flex: 1 1 auto; aspect-ratio: auto; min-height: 130px; }
+.deals .body { flex: 0 0 auto; }
 .noimg {
   display: grid; place-items: center; height: 100%;
   color: var(--muted); font-family: var(--mono); font-size: 11px; letter-spacing: .16em; text-transform: uppercase;
@@ -396,6 +425,36 @@ main { max-width: 1180px; margin: 0 auto; padding: 26px 26px 72px; }
   transition: border-color .12s ease, color .12s ease, background .12s ease;
 }
 .open:hover { border-color: var(--signal); color: var(--signal); background: var(--signal-dim); }
+
+/* ============================================================
+   Compact uniform cards — "cheapest by model" + "cheapest by brand"
+   Every card is the same size: a fixed-ratio thumbnail (no flex-fill),
+   a 2-line-clamped title and tightened type/spacing so more fit on
+   screen. Placed after the .deals rules above to override them.
+   ============================================================ */
+.compact-grid {
+  grid-template-columns: repeat(auto-fill, minmax(205px, 1fr));
+  gap: 12px;
+  margin-bottom: 28px;
+}
+/* Fixed thumbnail so cards don't stretch images to fill leftover height. */
+.compact-grid .thumb { flex: 0 0 auto; aspect-ratio: 4 / 3; min-height: 0; }
+.compact-grid .body { flex: 1 1 auto; padding: 11px 12px 12px; gap: 7px; }
+.compact-grid .title {
+  font-size: 13px; line-height: 1.3; min-height: 2.6em;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.compact-grid .price { font-size: 19px; }
+.compact-grid .price .cur { font-size: 10px; }
+.compact-grid .stats { font-size: 11px; gap: 5px 10px; }
+.compact-grid .stats .k { font-size: 8px; letter-spacing: .12em; }
+.compact-grid .meta { font-size: 10px; gap: 10px; }
+.compact-grid .open {
+  margin-top: auto; padding: 7px; font-size: 10px;
+}
+.compact-grid .badge { font-size: 11px; padding: 3px 7px; }
+.compact-grid .badge.cheapest, .compact-grid .badge.source { font-size: 9px; padding: 2px 6px; }
 
 /* comparable listings: row list (image left, content right) */
 .comp-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 44px; }
@@ -484,12 +543,33 @@ code { background: var(--panel-2); padding: 1px 6px; border-radius: 5px; font-fa
 .scope .cross-h { position: absolute; top: 50%; left: 7%; right: 7%; height: 1px; margin-top: -.5px; background: var(--hair); }
 .scope .sweep {
   position: absolute; inset: 0; border-radius: 50%;
-  background: conic-gradient(from 0deg, color-mix(in srgb, var(--signal) 30%, transparent), transparent 64deg);
-  animation: spin 2.6s linear infinite;
+  background: conic-gradient(from 0deg,
+    color-mix(in srgb, var(--signal) 48%, transparent) 0deg,
+    color-mix(in srgb, var(--signal) 20%, transparent) 22deg,
+    transparent 92deg);
+  animation: spin 2.1s linear infinite;
+  transform-origin: 50% 50%;
+  will-change: transform;
+}
+/* crisp leading beam, rides the front edge of the sweep as it rotates */
+.scope .sweep::before {
+  content: ""; position: absolute; left: 50%; top: 50%; width: 50%; height: 2px;
+  transform: translateY(-50%); transform-origin: left center;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--signal) 85%, transparent), transparent);
 }
 .scope .core {
   position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px;
   border-radius: 50%; background: var(--signal); box-shadow: 0 0 14px var(--signal);
+}
+/* expanding contact ping radiating out from the centre */
+.scope .core::after {
+  content: ""; position: absolute; left: 50%; top: 50%;
+  border-radius: 50%; border: 1px solid color-mix(in srgb, var(--signal) 55%, transparent);
+  animation: radar-ping 2.1s ease-out infinite;
+}
+@keyframes radar-ping {
+  0%   { width: 8px;   height: 8px;   margin: -4px;   opacity: .7; }
+  100% { width: 280px; height: 280px; margin: -140px; opacity: 0; }
 }
 .scope .blip { position: absolute; width: 4px; height: 4px; border-radius: 50%; background: rgba(160,180,170,.6); }
 .scope .blip.b1 { left: 30%; top: 38%; width: 6px; height: 6px; background: var(--signal); box-shadow: 0 0 10px var(--signal); animation: ping 1.8s ease-in-out infinite; }
@@ -513,7 +593,7 @@ code { background: var(--panel-2); padding: 1px 6px; border-radius: 5px; font-fa
 }
 .scan-line { color: var(--muted); }
 .scan-line .scan-arrow { color: var(--signal); margin-right: 8px; }
-.scan-cursor { color: var(--signal); }
+.scan-cursor { color: var(--signal); margin-left: 6px; }
 .scan-cursor::after { content: "▋"; animation: cur 1s steps(1) infinite; }
 
 .scan-progress { margin-top: 28px; }
@@ -529,7 +609,9 @@ code { background: var(--panel-2); padding: 1px 6px; border-radius: 5px; font-fa
    Accessibility: respect reduced-motion
    ============================================================ */
 @media (prefers-reduced-motion: reduce) {
-  .logo::before, .scope .sweep, .scope .blip, .scan-status::before, .scan-cursor::after { animation: none !important; }
+  .logo::before, .scope .sweep, .scope .blip, .scope .core::after,
+  .scan-status::before, .scan-cursor::after { animation: none !important; }
+  .scope .core::after { display: none; }
   .card { transition: none; }
 }
 

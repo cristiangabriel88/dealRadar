@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 cache.db
+.fb_profile/
 .pytest_cache/
 .venv/
 venv/

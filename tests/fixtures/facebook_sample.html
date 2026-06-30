@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<!--
+  A trimmed-down stand-in for a Facebook Marketplace search results page. The
+  real markup has obfuscated, randomized class names; what is stable (and what
+  the parser keys off) is the /marketplace/item/<id>/ anchor wrapping each card,
+  with the card's price, title and location rendered as text in that order.
+-->
+<html>
+  <body>
+    <div role="main">
+      <div>
+        <a href="/marketplace/item/1111111111/?ref=search">
+          <img src="https://scontent.xx.fbcdn.net/v/photo1.jpg" />
+          <div>
+            <span>2.000 lei</span>
+            <span>Bicicleta Trek Marlin 7</span>
+            <span>Sector 3, Bucuresti</span>
+          </div>
+        </a>
+      </div>
+      <div>
+        <a href="https://www.facebook.com/marketplace/item/2222222222/">
+          <img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" />
+          <div>
+            <span>€500</span>
+            <span>Bicicleta Cube Aim Pro</span>
+            <span>Cluj-Napoca</span>
+          </div>
+        </a>
+      </div>
+      <!-- A free item: priced text carries no number, so it is dropped. -->
+      <div>
+        <a href="/marketplace/item/3333333333/">
+          <img src="https://scontent.xx.fbcdn.net/v/photo3.jpg" />
+          <div>
+            <span>Gratuit</span>
+            <span>Cadru bicicleta vechi</span>
+            <span>Bucuresti</span>
+          </div>
+        </a>
+      </div>
+      <!-- Discounted item: current price first, struck-through original second. -->
+      <div>
+        <a href="/marketplace/item/4444444444/">
+          <img src="https://scontent.xx.fbcdn.net/v/photo4.jpg" />
+          <div>
+            <span>1.500 lei</span>
+            <span>2.000 lei</span>
+            <span>Bicicleta GT Avalanche redusa</span>
+            <span>Brasov</span>
+          </div>
+        </a>
+      </div>
+      <!-- Logged-out US default: price reads in USD. -->
+      <div>
+        <a href="/marketplace/item/5555555555/">
+          <img src="https://scontent.xx.fbcdn.net/v/photo5.jpg" />
+          <div>
+            <span>120 USD</span>
+            <span>Bicicleta Mongoose</span>
+            <span>San Francisco, CA</span>
+          </div>
+        </a>
+      </div>
+      <!-- Location-scoped card: the link carries an extra "np/" path segment. -->
+      <div>
+        <a href="/marketplace/np/item/6666666666/">
+          <img src="https://scontent.xx.fbcdn.net/v/photo6.jpg" />
+          <div>
+            <span>800 lei</span>
+            <span>Bicicleta Btwin Rockrider</span>
+            <span>Pantelimon, Bucuresti</span>
+          </div>
+        </a>
+      </div>
+      <!-- Duplicate of the first card (FB repeats cards as you scroll). -->
+      <div>
+        <a href="/marketplace/item/1111111111/?ref=deeplink">
+          <img src="https://scontent.xx.fbcdn.net/v/photo1.jpg" />
+          <div>
+            <span>2.000 lei</span>
+            <span>Bicicleta Trek Marlin 7</span>
+            <span>Sector 3, Bucuresti</span>
+          </div>
+        </a>
+      </div>
+    </div>
+  </body>
+</html>

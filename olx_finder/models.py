@@ -129,6 +129,23 @@ class CheapestListing:
         return (self.median - self.listing.price) / self.median
 
 
+@dataclass(slots=True)
+class BrandCheapest:
+    """The cheapest current listings for one brand, across all sources.
+
+    Powers the "Cheapest by brand" view: for each major brand present in the
+    pooled results, the lowest-priced listings regardless of model — a place to
+    spot underpriced gems the model-level views split across tiny groups. No
+    median is computed: a whole-brand pool mixes models, so an "average price"
+    would be meaningless (the same reason :class:`CheapestListing` withholds a
+    median from its mixed unknown-model bucket).
+    """
+
+    brand: str
+    count: int                 # total listings of this brand in the pool
+    listings: list[Listing]    # cheapest first, truncated to the requested limit
+
+
 def _fmt(value: float) -> str:
     """Format a price like '2 000' (no decimals, space thousands separator)."""
     return f"{round(value):,}".replace(",", " ")

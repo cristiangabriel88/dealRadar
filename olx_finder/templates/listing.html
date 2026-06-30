@@ -51,7 +51,6 @@
             <div><span class="k">Comparables</span><span class="v">{{ deal.sample_size }} listings</span></div>
             <div><span class="k">Group</span><span class="v">{{ deal.group.brand }}{% if not deal.group.model.startswith('(') %} {{ deal.group.model }}{% endif %}</span></div>
           </div>
-          <p class="why">{{ deal.explanation }}</p>
           <div class="meta">
             <span>{{ deal.listing.city }}</span>
             {% if deal.listing.posted_at %}<span>{{ deal.listing.posted_at.strftime('%Y-%m-%d') }}</span>{% endif %}

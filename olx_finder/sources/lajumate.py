@@ -60,7 +60,7 @@ class LajumateSource(MarketplaceSource):
 
     # ------------------------------------------------------------------ #
 
-    def _build(self, raw: list[dict[str, Any]], city: str, distance: int) -> list[Listing]:
+    def _build(self, raw: list[dict[str, Any]], city: str, distance: int = 0) -> list[Listing]:
         out = []
         for ad in raw:
             lst = self._to_listing(ad)

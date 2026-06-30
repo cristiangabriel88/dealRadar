@@ -16,6 +16,7 @@ from olx_finder.products import DEFAULT_PRODUCT
 from olx_finder.sources import (
     AnuntulSource,
     BikloSource,
+    FacebookSource,
     LajumateSource,
     OlxSource,
     Publi24Source,
@@ -25,6 +26,7 @@ from olx_finder.stats import (
     GROUPING_MODES,
     build_groups,
     build_model_groups,
+    cheapest_by_brand,
     cheapest_by_model,
     dedupe_cross_source,
     flag_deals,
@@ -51,12 +53,12 @@ SOURCES = {
     "Publi24": Publi24Source,
     "Lajumate": LajumateSource,
     "Anuntul": AnuntulSource,
+    "Facebook Marketplace": FacebookSource,
 }
 DEFAULT_SOURCES = ["OLX"]
 
 # Sources shown in the UI but not yet implemented (rendered as disabled boxes).
-# Facebook Marketplace needs a logged-in browser session (Playwright); deferred.
-DISABLED_SOURCES = {"Facebook Marketplace": "coming soon"}
+DISABLED_SOURCES: dict[str, str] = {}
 
 # Product-specific marketplaces, keyed by source name. A source listed here is
 # only shown (and only fetched) for the products whose ``extra_sources`` name it:
@@ -167,6 +169,7 @@ def index() -> str:
         "groups": [],
         "model_groups": [],
         "cheapest": [],
+        "cheapest_brand": [],
         "listing_count": 0,
         "error": None,
         "source_errors": [],
@@ -189,11 +192,14 @@ def index() -> str:
             model_groups = build_model_groups(pooled)
             # Cross-platform "cheapest exemplar per brand+model" view.
             cheapest = cheapest_by_model(pooled)
+            # Cross-platform "cheapest listings per brand" view (any model).
+            cheapest_brand = cheapest_by_brand(pooled)
             context.update(
                 listing_count=len(listings),
                 groups=groups,
                 model_groups=model_groups,
                 cheapest=cheapest,
+                cheapest_brand=cheapest_brand,
                 deals=deals,
                 # Partial failures: show deals from the sources that worked.
                 source_errors=source_errors,

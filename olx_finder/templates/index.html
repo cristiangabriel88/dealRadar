@@ -16,7 +16,6 @@
       <span class="logo" aria-hidden="true"></span>
       <div>
         <h1>Deal Radar</h1>
-        <p class="tagline">Statistical outliers among current marketplace listings — you verify, it finds.</p>
       </div>
     </div>
   </header>
@@ -179,6 +178,25 @@
         <div class="tabs" id="result-tabs">
           <button type="button" class="tab active" data-tab="deals">Deals · {{ deals|length }}</button>
           <button type="button" class="tab" data-tab="cheapest">Cheapest by model · {{ cheapest|length }}</button>
+          <button type="button" class="tab" data-tab="cheapest-brand" id="tab-cheapest-brand" hidden>Cheapest by brand · {{ cheapest_brand|length }}</button>
+        </div>
+
+        <!-- Opt-in "cheapest per brand" lens: the checkbox reveals the tab above
+             and the selector chooses how many of the (up to 20) cheapest cards
+             per brand to show. Both are client-side only — no re-search. -->
+        <div class="filterbar cheapest-brand-controls">
+          <label class="checkbox">
+            <input type="checkbox" id="show-cheapest-brand">
+            <span>Show cheapest per brand<small>spot gems across all models</small></span>
+          </label>
+          <div class="filter-field">
+            <label>Per brand</label>
+            <select id="cheapest-brand-count">
+              {% for n in range(1, config.CHEAPEST_PER_BRAND_MAX + 1) %}
+              <option value="{{ n }}" {{ 'selected' if n == config.CHEAPEST_PER_BRAND_DEFAULT }}>{{ n }}</option>
+              {% endfor %}
+            </select>
+          </div>
         </div>
 
         <div class="tab-panel" data-panel="deals">
@@ -226,7 +244,6 @@
                 <div><span class="k">Comparables</span><span class="v">{{ d.sample_size }} listings</span></div>
                 <div><span class="k">Group</span><span class="v">{{ d.group.brand }}{% if not d.group.model.startswith('(') %} {{ d.group.model }}{% endif %}</span></div>
               </div>
-              <p class="why">{{ d.explanation }}</p>
               <div class="meta">
                 <span>{{ d.listing.city }}</span>
                 {% if d.listing.posted_at %}<span>{{ d.listing.posted_at.strftime('%Y-%m-%d') }}</span>{% endif %}
@@ -304,7 +321,7 @@
           <button type="button" class="f-reset reset">Reset filter</button>
           <span class="f-count filter-count"></span>
         </div>
-        <section class="deals" id="cheapest-grid">
+        <section class="deals compact-grid" id="cheapest-grid">
           {% for c in cheapest %}
           <article class="card"
                    data-brand="{{ c.brand or '' }}"
@@ -345,6 +362,45 @@
         </div>
         {% endif %}
         </div><!-- /cheapest panel -->
+
+        <div class="tab-panel" data-panel="cheapest-brand" hidden>
+        {% if cheapest_brand %}
+        {% for b in cheapest_brand %}
+        <section class="brand-block">
+          <h3 class="brand-heading">{{ b.brand }} <span class="hint">({{ b.count }} listing{{ '' if b.count == 1 else 's' }})</span></h3>
+          <section class="deals compact-grid">
+            {% for lst in b.listings %}
+            <article class="card cheapest-brand-card" data-rank="{{ loop.index }}">
+              <div class="thumb">
+                {% if lst.thumbnail %}
+                  <img src="{{ lst.thumbnail }}" alt="" loading="lazy">
+                {% else %}
+                  <div class="noimg">no photo</div>
+                {% endif %}
+                {% if loop.index == 1 %}<span class="badge cheapest">cheapest</span>{% endif %}
+                {% if lst.source %}<span class="badge source">{{ lst.source }}</span>{% endif %}
+              </div>
+              <div class="body">
+                <h3 class="title">{{ lst.title }}</h3>
+                <div class="price">{{ lst.price|lei }} <span class="cur">{{ lst.currency }}</span></div>
+                <div class="meta">
+                  <span>{{ lst.city }}</span>
+                  {% if lst.model %}<span>{{ lst.model }}</span>{% endif %}
+                  {% if lst.posted_at %}<span>{{ lst.posted_at.strftime('%Y-%m-%d') }}</span>{% endif %}
+                </div>
+                <a class="open" href="{{ lst.url }}" target="_blank" rel="noopener">Open on {{ lst.source or 'site' }} ↗</a>
+              </div>
+            </article>
+            {% endfor %}
+          </section>
+        </section>
+        {% endfor %}
+        {% else %}
+        <div class="notice">
+          No listings found to compare. Try another city or add more sources.
+        </div>
+        {% endif %}
+        </div><!-- /cheapest-brand panel -->
       {% endif %}
     {% else %}
       <div class="empty">
@@ -378,16 +434,41 @@
     var pctEl = document.getElementById("scan-pct");
     var barEl = document.getElementById("scan-bar");
     var timers = [];
+    var creep = null;       // interval easing the bar up while fetching
+    var lastArrow = null;   // arrow of the most recent (still-running) log line
+    var cursor = null;      // blinking cursor parked on the active line
 
     function clearTimers() { timers.forEach(clearTimeout); timers = []; }
+    function stopCreep() { if (creep) { clearInterval(creep); creep = null; } }
     function setProgress(pct) {
       if (pctEl) pctEl.textContent = pct + "%";
       if (barEl) barEl.style.width = pct + "%";
     }
 
+    // Append a log line. The previously-active line gets a ✓ (it's done); the
+    // new one keeps the › arrow and carries the blinking cursor.
+    function emit(text) {
+      if (lastArrow) lastArrow.textContent = "✓";
+      var line = document.createElement("div");
+      line.className = "scan-line";
+      var arrow = document.createElement("span");
+      arrow.className = "scan-arrow";
+      arrow.textContent = "›";
+      line.appendChild(arrow);
+      line.appendChild(document.createTextNode(text));
+      if (cursor) cursor.remove();
+      cursor = document.createElement("span");
+      cursor.className = "scan-cursor";
+      line.appendChild(cursor);
+      logEl.appendChild(line);
+      lastArrow = arrow;
+    }
+
     // If the page is restored from the back/forward cache, make sure the overlay
     // isn't left covering the page.
-    window.addEventListener("pageshow", function () { overlay.hidden = true; clearTimers(); });
+    window.addEventListener("pageshow", function () {
+      overlay.hidden = true; clearTimers(); stopCreep();
+    });
 
     form.addEventListener("submit", function (ev) {
       // The submit event only fires once HTML5 validation passes, so by here we
@@ -404,71 +485,95 @@
       var match = document.getElementById("match_model");
       var byModel = match && match.checked;
 
-      var steps = [
+      // Two phases that mirror what the server actually does:
+      //  · fetchSteps run while the request is in flight. Paging every
+      //    marketplace is network-bound and is where (almost) all the wait
+      //    goes, so we dwell on the last of these and let the bar creep toward
+      //    a ceiling it never quite reaches — honest "still working".
+      //  · analysisSteps are near-instant server-side and only become *true*
+      //    once the response lands, so they don't play until results arrive,
+      //    then tick through quickly as a closing flourish.
+      var fetchSteps = [
         "Connecting to " + srcLabel + " …",
         "Searching listings in " + city + " …",
-        "Fetching details across result pages",
+        "Fetching details across result pages …"
+      ];
+      var analysisSteps = [
         "Reading titles · parsing brand" + (byModel ? " & model" : ""),
         "Grouping comparable listings " + (byModel ? "by brand + model" : "by brand"),
         "Computing the usual price for each group",
         "Scoring every listing against its group",
-        "Flagging the statistical outliers …"
+        "Flagging the statistical outliers"
       ];
 
       clearTimers();
+      stopCreep();
       logEl.innerHTML = "";
+      lastArrow = null;
+      cursor = null;
       setProgress(0);
       overlay.hidden = false;
 
-      var i = 0;
-      function tick() {
-        var line = document.createElement("div");
-        line.className = "scan-line";
-        var arrow = document.createElement("span");
-        arrow.className = "scan-arrow";
-        arrow.textContent = "›";
-        line.appendChild(arrow);
-        line.appendChild(document.createTextNode(steps[i]));
-        logEl.appendChild(line);
+      // Reveal the fetch steps, then settle on the long "fetching" dwell.
+      var fi = 0;
+      function emitFetch() { if (fi < fetchSteps.length) emit(fetchSteps[fi++]); }
+      timers.push(setTimeout(function () { emitFetch(); setProgress(8); }, 200));
+      timers.push(setTimeout(function () { emitFetch(); setProgress(22); }, 1000));
+      timers.push(setTimeout(function () {
+        emitFetch();
+        // Asymptotic creep: fast at first, slowing as it nears the ceiling, so
+        // it always looks alive without ever pretending the work is finished.
+        var p = 26, ceiling = 84;
+        setProgress(p);
+        creep = setInterval(function () {
+          p += (ceiling - p) * 0.06;
+          setProgress(Math.round(p));
+        }, 450);
+      }, 1800));
 
-        // Fill toward 100%, but hold the last step at ~92% — the real request is
-        // still running and the swap will complete the bar when results arrive.
-        var pct = i < steps.length - 1
-          ? Math.round(((i + 1) / steps.length) * 100)
-          : 92;
-        setProgress(pct);
+      // Play the analysis steps quickly, then swap in the results.
+      function reveal(fresh) {
+        clearTimers();
+        stopCreep();
+        while (fi < fetchSteps.length) emitFetch();  // flush if the fetch was fast
 
-        i++;
-        if (i < steps.length) {
-          timers.push(setTimeout(tick, 760));
-        } else {
-          // Keep a blinking cursor on the last line until the results land.
-          var cur = document.createElement("div");
-          cur.className = "scan-cursor";
-          logEl.appendChild(cur);
-        }
+        var base = 86;
+        setProgress(base);
+        var ai = 0;
+        (function nextStep() {
+          if (ai < analysisSteps.length) {
+            emit(analysisSteps[ai++]);
+            setProgress(base + Math.round((ai / analysisSteps.length) * (99 - base)));
+            timers.push(setTimeout(nextStep, 200));
+          } else {
+            if (lastArrow) lastArrow.textContent = "✓";
+            if (cursor) { cursor.remove(); cursor = null; }
+            setProgress(100);
+            timers.push(setTimeout(function () {
+              var current = document.getElementById("results");
+              if (fresh && current) current.replaceWith(fresh);
+              overlay.hidden = true;
+              if (window.initTabs) window.initTabs();
+              if (window.initDealFilter) window.initDealFilter();
+              if (window.initCheapestBrand) window.initCheapestBrand();
+              window.scrollTo(0, 0);
+            }, 280));
+          }
+        })();
       }
-      timers.push(setTimeout(tick, 200));
 
       // Send the search and swap only the #results block from the response.
       fetch(form.action || "/", { method: "POST", body: new FormData(form) })
         .then(function (resp) { return resp.text(); })
         .then(function (html) {
           var doc = new DOMParser().parseFromString(html, "text/html");
-          var fresh = doc.getElementById("results");
-          var current = document.getElementById("results");
-          if (fresh && current) current.replaceWith(fresh);
-          clearTimers();
-          setProgress(100);
-          overlay.hidden = true;
-          if (window.initTabs) window.initTabs();
-          if (window.initDealFilter) window.initDealFilter();
-          window.scrollTo(0, 0);
+          reveal(doc.getElementById("results"));
         })
         .catch(function () {
           // Network/parse failure: fall back to a normal submit so the user
           // still gets results (this navigates, like the original behaviour).
           clearTimers();
+          stopCreep();
           overlay.hidden = true;
           form.submit();
         });
@@ -647,8 +752,54 @@
     });
   };
 
+  // "Cheapest by brand" opt-in lens. The checkbox reveals the (otherwise hidden)
+  // third tab and switches to it; the selector chooses how many of the up-to-20
+  // cheapest cards per brand to show. Purely client-side over rendered cards, so
+  // it never re-fetches. Re-runnable after the #results block is swapped in.
+  window.initCheapestBrand = function () {
+    var checkbox = document.getElementById("show-cheapest-brand");
+    var countSel = document.getElementById("cheapest-brand-count");
+    var tabBtn = document.getElementById("tab-cheapest-brand");
+    var panel = document.querySelector('.tab-panel[data-panel="cheapest-brand"]');
+    if (!checkbox || !countSel || !tabBtn || !panel) return;
+
+    var cards = Array.prototype.slice.call(panel.querySelectorAll(".cheapest-brand-card"));
+
+    function applyCount() {
+      var n = parseInt(countSel.value, 10) || 1;
+      cards.forEach(function (c) {
+        var rank = parseInt(c.dataset.rank, 10) || 1;
+        c.style.display = rank <= n ? "" : "none";
+      });
+    }
+
+    function activate(name) {
+      document.querySelectorAll("#result-tabs .tab").forEach(function (t) {
+        t.classList.toggle("active", t.dataset.tab === name);
+      });
+      document.querySelectorAll(".tab-panel").forEach(function (p) {
+        p.hidden = p.dataset.panel !== name;
+      });
+    }
+
+    checkbox.addEventListener("change", function () {
+      if (checkbox.checked) {
+        tabBtn.hidden = false;
+        activate("cheapest-brand");
+      } else {
+        var wasActive = tabBtn.classList.contains("active");
+        tabBtn.hidden = true;
+        if (wasActive) activate("deals");
+      }
+    });
+
+    countSel.addEventListener("change", applyCount);
+    applyCount();
+  };
+
   initTabs();
   initDealFilter();
+  initCheapestBrand();
   </script>
 </body>
 </html>

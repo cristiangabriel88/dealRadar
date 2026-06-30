@@ -33,6 +33,12 @@ STRICT_MIN_SAMPLES: int = 3
 # against the broader brand pool.
 MIN_MODEL_COMPARABLES: int = 3
 
+# "Cheapest by brand" view: CHEAPEST_PER_BRAND_MAX is the hard cap of cheapest
+# listings materialised per brand server-side; the UI's per-brand selector ranges
+# 1..MAX and starts at CHEAPEST_PER_BRAND_DEFAULT.
+CHEAPEST_PER_BRAND_MAX: int = 20
+CHEAPEST_PER_BRAND_DEFAULT: int = 5
+
 # --------------------------------------------------------------------------- #
 # Grouping modes (selectable per search; see olx_finder/stats.py)
 # --------------------------------------------------------------------------- #
@@ -332,6 +338,43 @@ ANUNTUL_SEARCH_URL: str = "https://www.anuntul.ro/anunturi/"
 BIKLO_BASE: str = "https://www.biklo.ro"
 BIKLO_BICYCLES_URL: str = "https://admin.dirtbike.ro/api/bazar-ads-elastic/biciclete"
 BIKLO_IMAGE_BASE: str = "https://admin.dirtbike.ro/storage/"
+
+# Facebook Marketplace: login-gated and JS-rendered, so unlike the httpx sources
+# above it is driven by a real browser (Playwright). The app launches Chromium
+# with a dedicated, persistent profile; you log in once via
+# ``python -m olx_finder.fb_login`` and every later search reuses that session
+# headless. Marketplace is keyword-based (like OLX/Anuntul), so it uses
+# ``Product.query`` and needs no per-product category URL.
+#
+# Marketplace results are pinned to whatever location the logged-in account last
+# set (the app's account defaults to Paris), and that location can't be steered
+# by query params — it lives server-side. So rather than try to follow the city
+# picker, this source ALWAYS searches Bucharest and honours the UI's km radius
+# selector via the ``radius`` query param. The location id below is the one
+# Marketplace assigns to the Bucharest area; it must sit in the ``/marketplace/np/<id>/``
+# path (the ``np`` — "neighbourhood page" — prefix is what makes the path-based
+# location actually take; a bare ``/marketplace/<id>/`` is ignored).
+FB_MARKETPLACE_BASE: str = "https://www.facebook.com/marketplace"
+# Where the logged-in browser profile is stored (gitignored). Relative to the
+# project root / wherever the app is launched.
+FB_PROFILE_DIR: str = ".fb_profile"
+# Infinite-scroll budget (the Marketplace analog of MAX_PAGES / REQUEST_DELAY):
+# how many times to scroll to load more cards, and how long to wait for each
+# batch to render before scrolling again.
+FB_MAX_SCROLLS: int = 8
+FB_SCROLL_PAUSE_MS: int = 1500
+# Marketplace location id for the Bucharest area (read from the URL after setting
+# the location to Bucharest in the picker). Every Facebook search is forced to
+# this location; see the note above.
+FB_LOCATION_ID: str = "113381412010894"
+# Radius (km) to use when the UI asks for "this city only" (distance 0). The
+# Bucharest pin sits on the city's edge, so a modest radius is needed to cover
+# the whole city. Any non-zero UI distance is passed through to FB verbatim.
+FB_DEFAULT_RADIUS_KM: int = 20
+# The locality FB is always pinned to (see note above). Used to client-filter
+# FB's results to the user's selected city scope and to skip the browser launch
+# when that scope can't reach Bucharest.
+FB_SEARCH_CITY: str = "Bucuresti"
 
 # Default search query (the bikes product; see olx_finder/products.py).
 DEFAULT_QUERY: str = "bicicleta"

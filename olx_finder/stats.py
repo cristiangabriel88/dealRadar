@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from statistics import median as _median
 
 import config
-from olx_finder.models import CheapestListing, DealResult, Group, Listing
+from olx_finder.models import BrandCheapest, CheapestListing, DealResult, Group, Listing
 from olx_finder.parsing import (
     extract_brand_model,
     is_kids_listing,
@@ -32,7 +32,7 @@ from olx_finder.parsing import (
 from olx_finder.products import BIKES, Product
 
 # Preferred order when the same item is reposted across sites: keep the first.
-_SOURCE_PRIORITY = ["OLX", "Publi24", "Lajumate", "Anuntul", "biklo.ro"]
+_SOURCE_PRIORITY = ["OLX", "Publi24", "Lajumate", "Anuntul", "biklo.ro", "Facebook Marketplace"]
 
 # Constant from the modified z-score definition (0.6745 ≈ 1 / Φ⁻¹(0.75)),
 # which scales MAD to be consistent with the standard deviation for normal data.
@@ -98,8 +98,7 @@ GROUPING_MODES: dict[str, GroupingMode] = {
     "brand_raw": GroupingMode(
         key="brand_raw",
         label="Brand-only, no filtering",
-        description="Brand-level groups with no guards. Maximum deal volume, expect "
-        "size-mismatch noise (kids bikes, mixed wheel sizes).",
+        description="",
         group_by="brand",
         min_samples=config.MIN_SAMPLES,
         exclude_kids=False,
@@ -323,6 +322,37 @@ def cheapest_by_model(listings: list[Listing]) -> list[CheapestListing]:
         reverse=True,
     )
     return picks
+
+
+def cheapest_by_brand(
+    listings: list[Listing], limit: int = config.CHEAPEST_PER_BRAND_MAX
+) -> list[BrandCheapest]:
+    """For each brand in the pool, the ``limit`` cheapest listings (any model).
+
+    A brand-wide companion to :func:`cheapest_by_model`: it does not split by
+    model, so the genuinely cheap one-offs that the model views scatter across
+    tiny groups surface together under their brand. No median is computed — a
+    whole-brand pool mixes models, so an "average price" would be meaningless.
+
+    The input is expected to be already noise-filtered and brand/model-annotated
+    (e.g. the listings collected from :func:`build_groups`' groups). Brands are
+    ordered by how many listings they have (richest pools first); within a brand
+    the listings are cheapest first.
+    """
+    groups: dict[str, list[Listing]] = {}
+    for listing in listings:
+        if not listing.brand:
+            continue
+        groups.setdefault(listing.brand, []).append(listing)
+
+    result: list[BrandCheapest] = []
+    for brand, items in groups.items():
+        items.sort(key=lambda lst: lst.price)
+        result.append(
+            BrandCheapest(brand=brand, count=len(items), listings=items[: max(1, limit)])
+        )
+    result.sort(key=lambda b: b.count, reverse=True)
+    return result
 
 
 def _modified_z(price: float, median: float, mad: float) -> float:
