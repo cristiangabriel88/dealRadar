@@ -93,3 +93,46 @@ def test_multiple_signals_reported_longest_first() -> None:
     assert "defect" in sigs
     # Longest match first so the card badge shows the most specific wording.
     assert sigs.index("nu functioneaza") < sigs.index("defect")
+
+
+def test_negated_probleme_not_a_signal() -> None:
+    # "fara probleme" = WITHOUT problems. The word is present but denied, so it
+    # must not be reported and a clean listing must not surface.
+    assert find_defect_signals("bicicleta merge fara probleme") == []
+    assert find_defects([make("c", "bicicleta in stare buna, fara probleme")]) == []
+
+
+def test_negation_cues_across_tokens() -> None:
+    # Each negator that cancels a fault word, in its common Romanian forms.
+    for clean in (
+        "fara defecte",
+        "fara niciun defect",
+        "nu are defecte",
+        "nu are nicio problema",
+        "nu prezinta defecte",
+        "niciun defect",
+        "nicio problema",
+        "nu este defecta",
+        "nu a avut probleme",
+        "zero probleme",
+    ):
+        assert find_defect_signals(f"bicicleta {clean}") == [], clean
+
+
+def test_real_fault_kept_when_only_other_word_is_negated() -> None:
+    # The reported listing: a genuine fault ("defect schimbator") AND a denial
+    # ("fara probleme") in one description. The fault must surface; "probleme"
+    # (denied) must not be among the reported signals.
+    desc = "viteze 1/6 defect schimbator, dar se poate merge pe ea fara probleme"
+    sigs = find_defect_signals("Bicicleta 28", desc)
+    assert "defect" in sigs
+    assert "probleme" not in sigs
+    assert find_defects([make("r", "Bicicleta 28", description=desc)])[0].listing.id == "r"
+
+
+def test_unnegated_occurrence_still_counts() -> None:
+    # "nu doar defect" = NOT ONLY defective: the cue must end the lookback
+    # window, so a "nu" further back does not cancel a real fault.
+    assert "defect" in find_defect_signals("bicicleta nu doar defect ci si spart")
+    # A second, denied occurrence does not erase a first, admitted one.
+    assert "probleme" in find_defect_signals("are probleme la frana, in rest fara probleme")

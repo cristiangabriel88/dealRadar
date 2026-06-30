@@ -151,6 +151,34 @@ DEFECT_PHRASES: frozenset[str] = frozenset(
     }
 )
 
+# Romanian negation cues that CANCEL a fault word. A seller who writes "fara
+# probleme" (without problems), "nu are defecte" (has no defects) or "niciun
+# defect" (no defect) is denying the fault, not admitting it — the matcher must
+# not flag such a listing on that word. find_defect_signals suppresses any
+# DEFECT_TOKEN/PHRASE whose immediately-preceding words end with one of these
+# cues (see olx_finder/defects.py). Forms are normalized (diacritic-free,
+# lowercase) so they compare against normalized listing text; multi-word cues
+# let "nu are" / "nu a avut" read as a unit. A bare "nu" is a cue too: "nu
+# defect", "nu spart", "nu rupt" all mean the part is fine.
+NEGATION_CUES: frozenset[str] = frozenset(
+    {
+        "fara",                                   # fără — without
+        "nu",                                     # not (directly before a fault word)
+        "niciun", "nicio", "nici un", "nici o",   # no / not any
+        "fara vreo", "fara vreun",                # without any
+        "nu are", "nu mai are", "n are",          # doesn't / no longer has
+        "nu prezinta",                            # doesn't show
+        "nu e", "nu este", "nu mai e", "nu mai este",   # isn't / no longer is
+        "nu a avut", "nu am avut", "nu au avut",  # hasn't had
+        "zero", "0",                              # zero problems
+    }
+)
+
+# How many words before a fault word to scan for a NEGATION_CUE. Covers the
+# longest cue ("nu a avut" = 3 words); a cue must END the lookback window so
+# "nu doar defect" (not only defective) stays a real fault.
+NEGATION_LOOKBACK: int = 3
+
 # Hard cap on defect listings materialised per search.
 DEFECT_MAX_RESULTS: int = 60
 
@@ -158,7 +186,7 @@ DEFECT_MAX_RESULTS: int = 60
 # Grouping modes (selectable per search; see olx_finder/stats.py)
 # --------------------------------------------------------------------------- #
 # Default strategy when none is specified.
-DEFAULT_GROUPING_MODE: str = "brand_guarded"
+DEFAULT_GROUPING_MODE: str = "brand_raw"
 
 # Kids/junior bikes (excluded from the adult comparison pool in guarded mode).
 KIDS_TITLE_TOKENS: frozenset[str] = frozenset(

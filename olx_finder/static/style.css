@@ -212,7 +212,14 @@ main { max-width: 1180px; margin: 0 auto; padding: 26px 26px 72px; }
   text-transform: none; letter-spacing: normal; color: var(--text); font-size: 14px;
   font-family: var(--disp);
 }
-.field .checkbox input { width: 18px; height: 18px; accent-color: var(--signal); cursor: pointer; }
+.field .checkbox input {
+  width: 18px; height: 18px; accent-color: var(--signal); cursor: pointer;
+  /* Native accent-color boxes share a paint layer; a transition on them makes
+     Chrome repaint every checkbox when one is toggled (the "all flicker" bug).
+     They don't need the focus-ring animation, so opt out entirely. */
+  transition: none;
+}
+.field .checkbox input:focus { box-shadow: none; }
 .field .checkbox span { display: flex; flex-direction: column; line-height: 1.2; }
 .field .checkbox small { color: var(--muted); font-family: var(--mono); font-size: 10px; letter-spacing: .04em; }
 

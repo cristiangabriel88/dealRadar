@@ -25,7 +25,6 @@ from olx_finder.sources import (
     Publi24Source,
 )
 from olx_finder.stats import (
-    DEFAULT_MATCH_LEVEL,
     GROUPING_MODES,
     build_groups,
     build_model_groups,
@@ -158,12 +157,13 @@ def index() -> str:
         selected_sources = []
     selected_product = request.form.get("product", DEFAULT_PRODUCT)
     selected_mode = request.form.get("mode", config.DEFAULT_GROUPING_MODE)
-    # Checkbox: checked => match by brand+model (default). On POST its absence
-    # means the user unchecked it (= brand only); on first load it defaults checked.
+    # Checkbox: checked => match by brand+model. On POST its absence means the
+    # user unchecked it (= brand only); on first load it defaults unchecked
+    # (brand only, no model filtering — the loosest, maximum-recall view).
     if request.method == "POST":
         match_model = request.form.get("match_model") is not None
     else:
-        match_model = DEFAULT_MATCH_LEVEL == "brand_model"
+        match_model = False
     match_level = "brand_model" if match_model else "brand"
 
     context: dict = {
