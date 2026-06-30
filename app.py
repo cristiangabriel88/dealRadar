@@ -11,6 +11,7 @@ from flask import Flask, render_template, request
 
 import config
 from olx_finder.models import Listing, _fmt
+from olx_finder.parsing import normalize
 from olx_finder.products import PRODUCTS, Product, get_product
 from olx_finder.products import DEFAULT_PRODUCT
 from olx_finder.sleepers import find_sleepers
@@ -109,9 +110,20 @@ def aggregate(
             else:
                 pooled.extend(listings)
 
+    # Hard title exclusion: drop listings whose title contains an excluded whole
+    # word (e.g. "copii") before any view sees them.
+    if config.EXCLUDE_TITLE_WORDS:
+        pooled = [lst for lst in pooled if not _is_excluded(lst.title)]
+
     # Normalize every price to RON before dedup/stats so the whole pipeline and
     # the UI work in a single currency (and EUR/RON reposts of one item dedup).
     return dedupe_cross_source(to_ron(pooled)), errors
+
+
+def _is_excluded(title: str) -> bool:
+    """True when a listing title contains one of EXCLUDE_TITLE_WORDS as a word."""
+    tokens = set(normalize(title).split())
+    return bool(tokens & config.EXCLUDE_TITLE_WORDS)
 
 
 @app.template_filter("lei")

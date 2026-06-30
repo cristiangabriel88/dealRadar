@@ -328,7 +328,6 @@
               {% else %}
                 <div class="noimg">no photo</div>
               {% endif %}
-              {% if s.percent_below_category %}<span class="badge">−{{ (s.percent_below_category * 100)|round|int }}%</span>{% endif %}
               {% if not s.has_brand %}<span class="badge cheapest">no brand</span>{% endif %}
               {% if s.components %}<span class="badge parts">{{ s.components[:2]|join(', ') }}</span>{% endif %}
               {% if s.listing.source %}<span class="badge source">{{ s.listing.source }}</span>{% endif %}

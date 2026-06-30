@@ -34,6 +34,13 @@ TOUCHUP_BUFFER_NEEDS_WORK_LEI: float = 400.0  # defect/uzat/ruginit/reparatii
 EUR_TO_RON: float = 5.07
 USD_TO_RON: float = 4.35
 
+# Hard exclusion: any listing whose title contains one of these whole words is
+# dropped from the pool up front, before dedup/stats, so it never appears in ANY
+# view (deals, sleepers, cheapest). Matched on normalized whole words, so "copii"
+# won't accidentally catch an unrelated substring. Distinct from KIDS_TITLE_TOKENS,
+# which only excludes kids items from the comparison median in guarded mode.
+EXCLUDE_TITLE_WORDS: frozenset[str] = frozenset({"copii"})
+
 # A group must have at least this many samples before we trust its median
 # enough to flag deals against it. Small groups are reported but not flagged.
 MIN_SAMPLES: int = 5
