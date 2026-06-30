@@ -84,7 +84,6 @@ def _score(
             cap = config.SLEEPER_CATEGORY_BELOW_CAP
             graded = config.SLEEPER_WEIGHT_CHEAP_CATEGORY * min(pct, cap) / cap
             score += graded
-            reasons.append(f"{round(pct * 100)}% below the typical price")
 
     motivated = tokens & config.MOTIVATED_SELLER_TOKENS
     if motivated:

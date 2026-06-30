@@ -197,6 +197,7 @@
             <label>Sort by</label>
             <select class="f-sort">
               <option value="">Biggest discount</option>
+              <option value="roi">Best ROI</option>
               <option value="newest">Newest first</option>
               <option value="cheapest">Cheapest first</option>
             </select>
@@ -210,6 +211,7 @@
                    data-brand="{{ d.listing.brand or '' }}"
                    data-model="{{ d.listing.model or '(unknown model)' }}"
                    data-price="{{ d.listing.price }}"
+                   data-roi="{{ '%.4f'|format(d.roi) }}"
                    data-posted="{{ d.listing.posted_at.timestamp()|int if d.listing.posted_at else '' }}">
             <a class="card-link" target="_blank" rel="noopener"
                aria-label="View {{ d.listing.title }} and comparables"
@@ -226,6 +228,7 @@
               {% endif %}
               <span class="badge">−{{ (d.percent_below * 100)|round|int }}%</span>
               {% if d.is_cheapest_in_group %}<span class="badge cheapest">cheapest</span>{% endif %}
+              {% if d.listing.condition %}<span class="badge condition {{ d.listing.condition }}">{{ d.listing.condition|replace('_', ' ') }}</span>{% endif %}
               {% if d.listing.source %}<span class="badge source">{{ d.listing.source }}</span>{% endif %}
             </div>
             <div class="body">
@@ -234,10 +237,11 @@
               <div class="stats">
                 <div><span class="k">Usual price</span><span class="v">{{ d.median|lei }} {{ d.listing.currency }}</span></div>
                 <div><span class="k">Est. margin</span><span class="v margin">+{{ d.estimated_margin|lei }} {{ d.listing.currency }}</span></div>
+                <div><span class="k">Net / ROI</span><span class="v margin">{{ d.net_margin|lei }} {{ d.listing.currency }} · {{ (d.roi * 100)|round|int }}%</span></div>
                 <div><span class="k">Typical range</span><span class="v">{{ d.low|lei }}–{{ d.high|lei }}</span></div>
                 <div><span class="k">Comparables</span><span class="v">{{ d.sample_size }} listings</span></div>
               </div>
-              <p class="margin-note">resale spread before ~{{ config.TOUCHUP_BUFFER_LEI|int }} {{ d.listing.currency }} fix-up · {{ d.group.brand }}{% if not d.group.model.startswith('(') %} {{ d.group.model }}{% endif %}</p>
+              <p class="margin-note">net of ~{{ d.effective_touchup|int }} {{ d.listing.currency }} fix-up{% if d.listing.condition %} ({{ d.listing.condition|replace('_', ' ') }}){% endif %} · {{ d.group.brand }}{% if not d.group.model.startswith('(') %} {{ d.group.model }}{% endif %}</p>
               <div class="meta">
                 <span>{{ d.listing.city }}</span>
                 {% if d.listing.posted_at %}<span>{{ d.listing.posted_at.strftime('%Y-%m-%d') }}</span>{% endif %}
@@ -339,12 +343,6 @@
               {% endif %}
               <div class="stats">
                 <div><span class="k">Sleeper score</span><span class="v">{{ s.score|round(1) }}</span></div>
-                {% if s.category_median is not none %}
-                <div><span class="k">Typical price</span><span class="v">{{ s.category_median|lei }} {{ s.listing.currency }}</span></div>
-                {% endif %}
-                {% if s.listing.photo_count is not none %}
-                <div><span class="k">Photos</span><span class="v">{{ s.listing.photo_count }}</span></div>
-                {% endif %}
               </div>
               <div class="meta">
                 <span>{{ s.listing.city }}</span>
@@ -848,6 +846,7 @@
 
   // Client-side re-ordering of a grid's cards. The default ("") restores the
   // server's order (biggest discount for Deals, sleeper score for Sleepers);
+  // "roi" sorts by data-roi (net margin / cost, biggest first; Deals only);
   // "newest" sorts by the data-posted epoch (cards with no date sink to the
   // bottom — most non-OLX sources carry none); "cheapest" sorts by data-price.
   // Purely DOM reordering, so it composes with the brand/model filter's
@@ -873,6 +872,14 @@
         });
       } else if (mode === "cheapest") {
         sorted.sort(function (a, b) { return (num(a, "price") || 0) - (num(b, "price") || 0); });
+      } else if (mode === "roi") {
+        sorted.sort(function (a, b) {
+          var ra = num(a, "roi"), rb = num(b, "roi");
+          if (ra === null && rb === null) return a.dataset.orig - b.dataset.orig;
+          if (ra === null) return 1;
+          if (rb === null) return -1;
+          return rb - ra;
+        });
       } else {
         sorted.sort(function (a, b) { return a.dataset.orig - b.dataset.orig; });
       }

@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from olx_finder.parsing import (
+    detect_condition,
     extract_brand_model,
     find_premium_components,
     is_kids_listing,
@@ -12,6 +13,7 @@ from olx_finder.parsing import (
     normalize,
     parse_wheel_inches,
 )
+from olx_finder.products import GUITARS
 
 
 @pytest.mark.parametrize(
@@ -99,6 +101,87 @@ def test_component_word_with_whole_item_is_not_part(title: str) -> None:
 )
 def test_bare_component_is_still_part(title: str) -> None:
     assert is_part_listing(title) is True
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "Trek Marlin cu pompa si casca cadou",       # brand rescues the accessory
+        "Specialized Rockhopper cu suport telefon",
+        "Giant Talon cu portbagaj si far cadou",
+    ],
+)
+def test_branded_bike_with_bonus_accessory_is_not_part(title: str) -> None:
+    # The recall fix: a *branded* bike that merely mentions a bonus accessory must
+    # survive (previously the strong "pompa"/"casca"/… dropped it outright).
+    assert is_part_listing(title) is False
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "Pompa bicicleta cu manometru",  # accessory; whole-item word does NOT rescue
+        "Casca protectie marime L",
+        "Portbagaj spate bicicleta",
+    ],
+)
+def test_bare_accessory_is_still_part(title: str) -> None:
+    # A standalone accessory names the item it's for, so a whole-item word can't
+    # rescue it — only a real brand can (see test above).
+    assert is_part_listing(title) is True
+
+
+@pytest.mark.parametrize(
+    "title, description, expected",
+    [
+        ("Bicicleta noua nefolosita", None, "like_new"),
+        ("Bicicleta MTB", "frane defecte, necesita reparatii", "needs_work"),
+        ("Bicicleta reconditionata, revizie facuta", None, "refurbished"),
+        ("Bicicleta stare buna ca noua", "dar are o janta defecta", "needs_work"),  # worst wins
+        ("Chitara reconditionata impecabila", None, "refurbished"),  # refurb > like_new
+        ("Bicicleta de oras", "stare ok", None),  # no condition wording
+    ],
+)
+def test_detect_condition(title: str, description: str | None, expected: str | None) -> None:
+    assert detect_condition(title, description) == expected
+
+
+def test_guitar_branded_with_bonus_accessory_is_not_part() -> None:
+    # Guitar parity: a *branded* guitar that throws in a case/tuner survives.
+    assert is_part_listing("Fender Stratocaster cu husa", GUITARS) is False
+    assert is_part_listing("Yamaha F310 cu husa si acordor", GUITARS) is False
+
+
+def test_guitar_naming_premium_pickups_survives() -> None:
+    # A cheap guitar advertising its pickups is a sleeper: the component tier +
+    # whole-item word keeps it (it used to be dropped by the strong "doze" token).
+    assert is_part_listing("Chitara electrica cu doze EMG active", GUITARS) is False
+    # But bare pickups on their own are still a part.
+    assert is_part_listing("Doze EMG active de vanzare", GUITARS) is True
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "Husa chitara clasica",      # accessory; whole-item word does NOT rescue
+        "Amplificator chitara 30W",  # strong standalone gear
+        "Set corzi pentru chitara",
+    ],
+)
+def test_guitar_bare_part_is_still_part(title: str) -> None:
+    assert is_part_listing(title, GUITARS) is True
+
+
+def test_guitar_premium_components() -> None:
+    found = find_premium_components(
+        "Chitara electrica",
+        description="cu Floyd Rose si doze EMG, corp mahon",
+        product=GUITARS,
+    )
+    assert "Floyd Rose" in found
+    assert "EMG" in found
+    assert "Mahogany" in found
+    assert find_premium_components("Chitara clasica incepatori", product=GUITARS) == []
 
 
 def test_find_premium_components() -> None:

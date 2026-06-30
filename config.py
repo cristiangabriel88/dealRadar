@@ -18,8 +18,14 @@ MOD_Z_THRESHOLD: float = -1.5
 MIN_PERCENT_BELOW: float = 0.25  # 25% below the group median
 
 # Rough fix-up cost (lei) subtracted when framing a deal's resale margin, so the
-# "Est. margin" shown is what's left after a typical clean-up/touch-up.
-TOUCHUP_BUFFER_LEI: float = 150.0
+# net margin / ROI shown is what's left after a typical clean-up/touch-up. The
+# default is used when a listing's condition can't be read from its title/text;
+# the condition-specific buffers below refine it (see detect_condition + the
+# CONDITION_* token sets). A "like new" item needs almost nothing; a "defect" /
+# "uzat" one needs real work, so it carries a bigger buffer.
+TOUCHUP_BUFFER_LEI: float = 150.0          # unknown condition (default)
+TOUCHUP_BUFFER_LIKE_NEW_LEI: float = 0.0   # nou/nefolosit/sigilat/impecabil
+TOUCHUP_BUFFER_NEEDS_WORK_LEI: float = 400.0  # defect/uzat/ruginit/reparatii
 
 # Currency normalization. A few sources price listings in EUR (and Facebook in
 # USD when hit logged-out); every price is converted to RON up front so all
@@ -130,10 +136,28 @@ PART_NOISE_TOKENS: frozenset[str] = frozenset(
         "anvelope",   # tyres
         "cauciuc",    # tyre/rubber
         "cauciucuri",
+    }
+)
+
+# "Accessory" tokens: add-ons a *whole* bike commonly lists as a bonus ("Trek
+# Marlin cu pompa si casca cadou", "bicicleta + portbagaj"). On their own they're
+# a part; mentioned alongside a complete bike they're a freebie. Like the
+# component tier below, they only mark a part when nothing signals a whole bike —
+# no WHOLE_ITEM_TOKENS word and no known brand (see parsing.is_part_listing).
+# Previously these lived in PART_NOISE_TOKENS and discarded genuine bikes outright.
+PART_ACCESSORY_TOKENS: frozenset[str] = frozenset(
+    {
         "pompa",      # pump
         "casca",      # helmet
         "suport",     # rack/stand
         "portbagaj",  # carrier
+        "lacat",      # lock
+        "sonerie",    # bell
+        "far",        # light
+        "lumini",     # lights
+        "bidon",      # bottle
+        "aparatoare", # mudguard
+        "aparatori",
     }
 )
 
@@ -201,6 +225,32 @@ GENERIC_DESCRIPTOR_TOKENS: frozenset[str] = frozenset(
         "intretinuta", "ingrijita", "urgent", "urgenta", "negociabil", "fix",
         "ieftin", "ieftina", "putin", "folosita", "folosit", "vand", "vanzare",
     }
+)
+
+# --------------------------------------------------------------------------- #
+# Condition detection (drives the fix-up buffer in the margin/ROI math)
+# --------------------------------------------------------------------------- #
+# Diacritic-stripped, lowercased tokens read from a listing's title/description
+# to estimate how much touch-up it needs. Shared across products (the vocabulary
+# is generic Romanian condition wording, not bike/guitar specific). When tokens
+# from more than one tier appear, NEEDS_WORK wins over REFURBISHED wins over
+# LIKE_NEW — a "defect" caveat outweighs a boilerplate "stare buna" (see
+# olx_finder/parsing.detect_condition).
+CONDITION_LIKE_NEW_TOKENS: frozenset[str] = frozenset(
+    {
+        "nou", "noua", "noi", "nefolosit", "nefolosita", "sigilat", "sigilata",
+        "impecabil", "impecabila", "impecabile",
+    }
+)
+CONDITION_NEEDS_WORK_TOKENS: frozenset[str] = frozenset(
+    {
+        "defect", "defecta", "defecte", "uzat", "uzata", "uzate", "ruginit", "ruginita",
+        "zgariat", "zgariata", "lipsa", "lipsesc", "reparat", "reparatii",
+        "nefunctional", "deteriorat", "deteriorata", "fisurat", "fisurata",
+    }
+)
+CONDITION_REFURBISHED_TOKENS: frozenset[str] = frozenset(
+    {"reconditionat", "reconditionata", "recond", "revizie", "revizuit", "service"}
 )
 
 # Tokens that are never part of a *bike* model (units, types, sizes), unioned
@@ -311,20 +361,11 @@ GUITAR_BRANDS: dict[str, list[str]] = {
     "Vox": ["vox"],
 }
 
-# Titles containing any of these tokens are guitar parts/accessories, not whole
-# guitars, and are excluded from the analysis (mirrors PART_NOISE_TOKENS).
+# "Strong" guitar part tokens: standalone gear (amps, FX, pickups, cables) that a
+# whole-guitar listing virtually never names — they drop the listing outright
+# (mirrors the bike PART_NOISE_TOKENS).
 GUITAR_PART_NOISE_TOKENS: frozenset[str] = frozenset(
     {
-        "husa",        # gig bag
-        "toc",         # hard case
-        "corzi",       # strings
-        "coarda",      # string
-        "pana",        # pick
-        "pene",        # picks
-        "pick",
-        "pickuri",
-        "doza",        # pickup
-        "doze",        # pickups
         "ampli",       # amp
         "amplificator",
         "combo",       # combo amp
@@ -334,20 +375,77 @@ GUITAR_PART_NOISE_TOKENS: frozenset[str] = frozenset(
         "efect",       # effect
         "efecte",
         "procesor",    # multi-fx
+        "cablu",       # cable
+        "jack",
+        "diapazon",    # fretboard/diapason (sold as a part)
+        "scaun",       # stool
+        "metronom",
+    }
+)
+
+# "Component" guitar tokens: pickup words a *whole guitar also names* ("chitara
+# electrica cu doze EMG"). Kept when a whole-guitar word or a known brand is
+# present, else a standalone-pickup part. Crucial for recall: a cheap guitar
+# advertising premium pickups is exactly a sleeper, so it must not be dropped
+# outright the way the strong tier would.
+GUITAR_PART_COMPONENT_TOKENS: frozenset[str] = frozenset({"doza", "doze"})
+
+# "Accessory" guitar tokens: add-ons a whole guitar commonly lists as a bonus
+# ("Fender Stratocaster cu husa", "chitara + toc si acordor"). They only mark a
+# part when nothing signals a whole guitar — no GUITAR_WHOLE_ITEM_TOKENS word and
+# no known brand (the guitar analogue of PART_ACCESSORY_TOKENS).
+GUITAR_PART_ACCESSORY_TOKENS: frozenset[str] = frozenset(
+    {
+        "husa",        # gig bag
+        "toc",         # hard case
+        "corzi",       # strings
+        "coarda",      # string
+        "pana",        # pick
+        "pene",        # picks
+        "pick",
+        "pickuri",
         "curea",       # strap
         "stativ",      # stand
         "stand",
         "suport",      # holder
         "acordor",     # tuner
-        "metronom",
         "capodastru",  # capo
         "capo",
-        "cablu",       # cable
-        "jack",
-        "diapazon",    # fretboard/diapason (sold as a part)
-        "scaun",       # stool
     }
 )
+
+# Words that mark a *complete* guitar; their presence overrides an ambiguous
+# accessory token (so "chitara ... cu husa" stays a guitar). Guitars have no
+# component tier — the strong/accessory split is enough — so this set backs the
+# accessory override alone (the guitar analogue of WHOLE_ITEM_TOKENS).
+GUITAR_WHOLE_ITEM_TOKENS: frozenset[str] = frozenset(
+    {
+        "chitara", "chitare", "guitar", "electrica", "acustica", "clasica",
+        "electroacustica", "semiacustica", "bas", "bass",
+    }
+)
+
+# Premium guitar features/hardware/tonewoods. A cheap guitar whose title or
+# description names one of these is often worth more than its asking price —
+# exactly the "seller doesn't know what they have" case the Sleepers scorer
+# rewards (the guitar analogue of PREMIUM_BIKE_COMPONENTS). Canonical label ->
+# normalized aliases.
+GUITAR_PREMIUM_COMPONENTS: dict[str, list[str]] = {
+    "Floyd Rose": ["floyd rose", "floyd"],
+    "Seymour Duncan": ["seymour duncan", "seymour", "duncan"],
+    "DiMarzio": ["dimarzio"],
+    "EMG": ["emg"],
+    "Fishman": ["fishman"],
+    "Grover": ["grover"],
+    "Gotoh": ["gotoh"],
+    "Mahogany": ["mahon", "mahogany"],
+    "Maple": ["artar", "maple"],
+    "Rosewood": ["palisandru", "rosewood"],
+    "Ebony": ["abanos", "ebony"],
+    "Solid top": ["masiv", "lemn masiv"],
+    "Active pickups": ["doze active", "active"],
+    "Made in Japan/USA": ["made in japan", "made in usa", "mij"],
+}
 
 # Tokens that are never part of a *guitar* model (types, sizes), unioned with
 # the generic descriptors.

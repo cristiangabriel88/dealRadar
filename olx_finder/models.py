@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
+import config
+
 
 @dataclass(slots=True)
 class Listing:
@@ -27,6 +29,10 @@ class Listing:
     # Filled in by the parsing layer.
     brand: str | None = None
     model: str | None = None
+    # Best-effort condition read from the title/description ("like_new",
+    # "refurbished", "needs_work", or None when no condition wording is found).
+    # Sizes the fix-up buffer in the deal margin/ROI math.
+    condition: str | None = None
 
     # Free-text body of the listing and how many photos it carries. Only the
     # richer sources expose these (OLX, biklo); the HTML/Facebook sources leave
@@ -77,11 +83,43 @@ class DealResult:
     def estimated_margin(self) -> float:
         """Rough resale spread in lei: the typical price minus the asking price.
 
-        A flipper's headline number — buy at ``listing.price``, resell around the
-        comparable median. It's a gross spread (before the fix-up buffer the UI
-        notes separately); negative only if the listing isn't actually a bargain.
+        A flipper's gross headline number — buy at ``listing.price``, resell around
+        the comparable median. It's *before* the fix-up buffer (see
+        :attr:`net_margin`); negative only if the listing isn't actually a bargain.
         """
         return self.median - self.listing.price
+
+    @property
+    def effective_touchup(self) -> float:
+        """Fix-up cost (lei) to subtract, sized by the listing's read condition.
+
+        ``like_new`` needs almost nothing, ``needs_work`` needs real work; an
+        unknown condition falls back to the default buffer.
+        """
+        condition = self.listing.condition
+        if condition == "like_new":
+            return config.TOUCHUP_BUFFER_LIKE_NEW_LEI
+        if condition == "needs_work":
+            return config.TOUCHUP_BUFFER_NEEDS_WORK_LEI
+        # "refurbished" and unknown both use the default.
+        return config.TOUCHUP_BUFFER_LEI
+
+    @property
+    def net_margin(self) -> float:
+        """Resale spread after the condition-aware fix-up buffer (lei)."""
+        return self.estimated_margin - self.effective_touchup
+
+    @property
+    def roi(self) -> float:
+        """Return on the cash put in: net margin / (asking + fix-up).
+
+        The flipper's real ranking metric — a small cheap flip can beat a big
+        one in percentage terms. Guarded against a zero cost basis.
+        """
+        cost = self.listing.price + self.effective_touchup
+        if cost <= 0:
+            return 0.0
+        return self.net_margin / cost
 
     @property
     def explanation(self) -> str:
@@ -101,11 +139,21 @@ class DealResult:
         descriptor = self.group.brand
         if self.group.model and not self.group.model.startswith("("):
             descriptor = f"{self.group.brand} {self.group.model}"
+        condition_note = ""
+        if self.listing.condition:
+            label = self.listing.condition.replace("_", " ")
+            condition_note = (
+                f" Reads as {label}, so after a ~{_fmt(self.effective_touchup)} "
+                f"{self.listing.currency} fix-up the net spread is ~"
+                f"{_fmt(self.net_margin)} {self.listing.currency} "
+                f"({round(self.roi * 100)}% ROI)."
+            )
         return (
             f"Listed at {price} {self.listing.currency}. Based on {self.sample_size} "
             f"comparable {descriptor} listings in "
             f"{self.listing.city}, the typical price is ~{median} {self.listing.currency} "
             f"(range {low}–{high}). This one is {pct}% below the median{cheapest}."
+            f"{condition_note}"
         )
 
 

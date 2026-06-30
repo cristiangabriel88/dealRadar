@@ -172,23 +172,59 @@ def _alias_in_title(norm_title: str, alias: str) -> bool:
 def is_part_listing(title: str, product: Product = BIKES) -> bool:
     """True when the title indicates parts/accessories rather than a whole item.
 
-    A "strong" part token (``part_noise_tokens``) marks a part outright. An
-    ambiguous "component" token (``part_component_tokens``) — a word whole-item
-    listings also use, e.g. "frane" or "roti 29" — marks a part only when nothing
-    signals a complete item: no ``whole_item_tokens`` word and no known brand.
-    Products that leave the component/whole-item sets empty (e.g. guitars) keep
-    the strict "any part token => a part" behaviour.
+    Three tiers, from strongest to weakest:
+
+    * ``part_noise_tokens`` — "strong": always a part, dropped outright (a
+      complete item never titles itself "cadru"/"amplificator").
+    * ``part_component_tokens`` — a part word a *whole item also names* ("frane
+      disc", "doze EMG"). Kept when a ``whole_item_tokens`` word **or** a known
+      brand is present (the item is describing its own components), else a part.
+    * ``part_accessory_tokens`` — a separate add-on ("husa", "pompa"). A standalone
+      accessory listing routinely names the item it's *for* ("husa chitara",
+      "pompa bicicleta"), so a whole-item word does NOT rescue it — only a known
+      brand does ("Trek Marlin cu pompa cadou" survives; "pompa bicicleta" drops).
+
+    Products that leave the component/accessory sets empty keep the strict "any
+    strong token => a part" behaviour.
     """
     tokens = set(normalize(title).split())
     if tokens & product.part_noise_tokens:
         return True
-    if product.part_component_tokens and (tokens & product.part_component_tokens):
-        if tokens & product.whole_item_tokens:
-            return False
-        if extract_brand_model(title, product=product)[0] is not None:
-            return False
-        return True
-    return False
+
+    component_hit = bool(tokens & product.part_component_tokens)
+    accessory_hit = bool(tokens & product.part_accessory_tokens)
+    if not (component_hit or accessory_hit):
+        return False
+
+    # A real brand rescues both tiers (a branded item naming an add-on is the item).
+    if extract_brand_model(title, product=product)[0] is not None:
+        return False
+    # A whole-item word rescues only a component listing, not a standalone accessory.
+    if component_hit and (tokens & product.whole_item_tokens):
+        return False
+    return True
+
+
+def detect_condition(
+    title: str, description: str | None = None, product: Product = BIKES
+) -> str | None:
+    """Best-effort condition read from a listing's title/description.
+
+    Returns ``"needs_work"``, ``"refurbished"``, ``"like_new"`` or ``None`` (no
+    condition wording found). Scans both fields (like
+    :func:`find_premium_components`) and applies the worst-case tier when wording
+    collides: ``needs_work`` > ``refurbished`` > ``like_new``, so a "defect"
+    caveat outweighs a boilerplate "stare buna". Drives the per-condition fix-up
+    buffer in the margin/ROI math (see :class:`olx_finder.models.DealResult`).
+    """
+    tokens = set(normalize(f"{title} {description or ''}").split())
+    if tokens & product.condition_needs_work_tokens:
+        return "needs_work"
+    if tokens & product.condition_refurbished_tokens:
+        return "refurbished"
+    if tokens & product.condition_like_new_tokens:
+        return "like_new"
+    return None
 
 
 # Premium-component alias index, built lazily and cached per product (same shape

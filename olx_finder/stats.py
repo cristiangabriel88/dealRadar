@@ -24,6 +24,7 @@ from statistics import median as _median
 import config
 from olx_finder.models import BrandCheapest, CheapestListing, DealResult, Group, Listing
 from olx_finder.parsing import (
+    detect_condition,
     extract_brand_model,
     is_kids_listing,
     is_part_listing,
@@ -184,11 +185,12 @@ def dedupe_cross_source(listings: list[Listing]) -> list[Listing]:
 
 
 def annotate_listings(listings: list[Listing], product: Product = BIKES) -> list[Listing]:
-    """Fill in brand/model on each listing (in place) and return the list."""
+    """Fill in brand/model/condition on each listing (in place) and return it."""
     for listing in listings:
         brand, model = extract_brand_model(listing.title, listing.brand_hint, product)
         listing.brand = brand
         listing.model = model
+        listing.condition = detect_condition(listing.title, listing.description, product)
     return listings
 
 

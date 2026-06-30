@@ -10,7 +10,7 @@ missing optional signal (description, photo count) is neutral, never a penalty.
 from __future__ import annotations
 
 from olx_finder.models import Listing
-from olx_finder.products import BIKES
+from olx_finder.products import BIKES, GUITARS
 from olx_finder.sleepers import _score, find_sleepers
 from olx_finder.stats import annotate_listings, build_groups, get_mode
 
@@ -43,6 +43,18 @@ def make(
         description=description,
         photo_count=photo_count,
     )
+
+
+def test_guitar_premium_component_signal_fires() -> None:
+    # Guitar parity: a cheap guitar naming premium hardware scores the component
+    # signal and surfaces with the parts listed.
+    pool = [make(str(i), f"Yamaha F310 {i}", 800) for i in range(5)]
+    flip = make("g", "chitara electrica", 400, description="cu Floyd Rose si doze EMG")
+    sleepers = find_sleepers(pool + [flip], GUITARS)
+    flip_sleeper = next((s for s in sleepers if s.listing.id == "g"), None)
+    assert flip_sleeper is not None
+    assert "Floyd Rose" in flip_sleeper.components
+    assert "EMG" in flip_sleeper.components
 
 
 def test_unbranded_listing_surfaces_as_sleeper() -> None:

@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 from olx_finder.models import Listing
-from olx_finder.stats import build_groups, dedupe_cross_source, flag_deals, get_mode
+from olx_finder.stats import (
+    annotate_listings,
+    build_groups,
+    dedupe_cross_source,
+    flag_deals,
+    get_mode,
+)
 
 
 def make(
@@ -46,6 +52,18 @@ def test_flags_clear_low_outlier() -> None:
     # Profit framing: resale spread = typical (median) − asking.
     assert deal.estimated_margin == deal.median - deal.listing.price
     assert deal.estimated_margin == 1000  # median 2000 − asking 1000
+
+
+def test_annotate_sets_condition() -> None:
+    listings = [
+        make("1", "Trek Marlin 7 noua nefolosita", 2000),
+        make("2", "Trek Marlin 7 frane defecte", 2000),
+        make("3", "Trek Marlin 7 stare ok", 2000),
+    ]
+    annotate_listings(listings)
+    assert listings[0].condition == "like_new"
+    assert listings[1].condition == "needs_work"
+    assert listings[2].condition is None
 
 
 def test_below_min_samples_not_flagged() -> None:

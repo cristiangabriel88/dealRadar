@@ -393,6 +393,23 @@ main { max-width: 1180px; margin: 0 auto; padding: 26px 26px 72px; }
   font-size: 10px; font-weight: 600; letter-spacing: .06em; box-shadow: none;
   text-transform: uppercase;
 }
+/* Condition badge on Deal cards (bottom-right): colour-coded by how much
+   fix-up it implies — like-new is reassuring (green), needs-work is a warning
+   (amber), refurbished is neutral. */
+.badge.condition {
+  top: auto; bottom: 10px; right: 10px; left: auto;
+  background: rgba(8, 11, 16, .7); color: #cdd6e4;
+  border: 1px solid var(--hair); font-size: 10px; font-weight: 600;
+  letter-spacing: .06em; box-shadow: none; text-transform: uppercase;
+}
+.badge.condition.like_new {
+  color: var(--signal);
+  border-color: color-mix(in srgb, var(--signal) 40%, transparent);
+}
+.badge.condition.needs_work {
+  color: #f0b34a;
+  border-color: color-mix(in srgb, #f0b34a 45%, transparent);
+}
 
 /* Deal profit framing. */
 .stats .v.margin { color: var(--signal); }
