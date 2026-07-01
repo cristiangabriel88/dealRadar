@@ -6,6 +6,7 @@ Run locally with:  python app.py   -> http://127.0.0.1:5000
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 
 from flask import Flask, render_template, request
 
@@ -16,6 +17,7 @@ from olx_finder.products import PRODUCTS, Product, get_product
 from olx_finder.products import DEFAULT_PRODUCT
 from olx_finder.defects import find_defects
 from olx_finder.sleepers import find_sleepers
+from olx_finder import seen
 from olx_finder.sources import (
     AnuntulSource,
     BikloSource,
@@ -132,6 +134,23 @@ def _lei(value: float) -> str:
     return _fmt(value)
 
 
+@app.template_filter("age")
+def _age(first_seen: datetime | None) -> str:
+    """Human age from a first-seen datetime, e.g. 'new', 'seen 3d ago'.
+
+    A cross-source recency label (works even where a listing carries no
+    posted_at). 'new' means first seen today; otherwise the whole-day gap.
+    """
+    if first_seen is None:
+        return ""
+    days = (datetime.now().date() - first_seen.date()).days
+    if days <= 0:
+        return "new"
+    if days == 1:
+        return "seen 1d ago"
+    return f"seen {days}d ago"
+
+
 @app.route("/", methods=["GET", "POST"])
 def index() -> str:
     cities = sorted(config.MAIN_CITIES)
@@ -190,6 +209,7 @@ def index() -> str:
         "sleepers": [],
         "defects": [],
         "listing_count": 0,
+        "new_count": 0,
         "error": None,
         "source_errors": [],
         "mode_obj": get_mode(selected_mode),
@@ -203,6 +223,9 @@ def index() -> str:
             listings, source_errors = aggregate(
                 selected_sources, product, selected_city, selected_distance
             )
+            # Flag listings never scanned before (and stamp first_seen) so the
+            # "new since last scan" badge/age rides along into every view below.
+            new_count = seen.mark_and_flag(listings)
             groups = build_groups(listings, mode, product)
             deals = flag_deals(groups, mode, match_level)
             # Listings that survived noise filtering, pooled across every source.
@@ -221,6 +244,7 @@ def index() -> str:
             defects = find_defects(listings, product)
             context.update(
                 listing_count=len(listings),
+                new_count=new_count,
                 groups=groups,
                 model_groups=model_groups,
                 cheapest=cheapest,

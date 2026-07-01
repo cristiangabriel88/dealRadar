@@ -160,6 +160,7 @@
           Scanned <strong>{{ listing_count }}</strong> listings in
           <strong>{{ 'all of Romania' if selected_city == all_cities else selected_city }}</strong>{% if selected_distance and selected_city != all_cities %} <em>+{{ selected_distance }} km</em>{% endif %} ·
           <strong>{{ deals|length }}</strong> deal{{ '' if deals|length == 1 else 's' }} flagged ·
+          {% if new_count %}<strong class="new-count">{{ new_count }}</strong> new since last scan ·{% endif %}
           match: <em>{{ 'brand + model' if match_model else 'brand only' }}</em> ·
           mode: <em>{{ mode_obj.label }}</em>
         </div>
@@ -195,10 +196,29 @@
             <select class="f-model"><option value="">All models</option></select>
           </div>
           <div class="filter-field">
+            <label>Condition</label>
+            <select class="f-condition">
+              <option value="">Any condition</option>
+              <option value="like_new">Like new</option>
+              <option value="needs_work">Needs work</option>
+              <option value="refurbished">Refurbished</option>
+            </select>
+          </div>
+          <div class="filter-field filter-price">
+            <label>Price</label>
+            <div class="price-range">
+              <input type="number" class="f-pmin" placeholder="min" min="0" inputmode="numeric">
+              <span>–</span>
+              <input type="number" class="f-pmax" placeholder="max" min="0" inputmode="numeric">
+            </div>
+          </div>
+          <label class="filter-check"><input type="checkbox" class="f-new"> New only</label>
+          <div class="filter-field">
             <label>Sort by</label>
             <select class="f-sort">
               <option value="">Biggest discount</option>
               <option value="roi">Best ROI</option>
+              <option value="new">Newly found</option>
               <option value="newest">Newest first</option>
               <option value="cheapest">Cheapest first</option>
             </select>
@@ -206,13 +226,16 @@
           <button type="button" class="f-reset reset">Reset filter</button>
           <span class="f-count filter-count"></span>
         </div>
-        <section class="deals" id="deals">
+        <section class="deals compact-grid" id="deals">
           {% for d in deals %}
           <article class="card"
                    data-brand="{{ d.listing.brand or '' }}"
                    data-model="{{ d.listing.model or '(unknown model)' }}"
                    data-price="{{ d.listing.price }}"
+                   data-condition="{{ d.listing.condition or '' }}"
                    data-roi="{{ '%.4f'|format(d.roi) }}"
+                   data-new="{{ 1 if d.listing.is_new else 0 }}"
+                   data-firstseen="{{ d.listing.first_seen.timestamp()|int if d.listing.first_seen else '' }}"
                    data-posted="{{ d.listing.posted_at.timestamp()|int if d.listing.posted_at else '' }}">
             <a class="card-link" target="_blank" rel="noopener"
                aria-label="View {{ d.listing.title }} and comparables"
@@ -228,6 +251,7 @@
                 <div class="noimg">no photo</div>
               {% endif %}
               <span class="badge">−{{ (d.percent_below * 100)|round|int }}%</span>
+              {% if d.listing.is_new %}<span class="badge new">new</span>{% endif %}
               {% if d.is_cheapest_in_group %}<span class="badge cheapest">cheapest</span>{% endif %}
               {% if d.listing.condition %}<span class="badge condition {{ d.listing.condition }}">{{ d.listing.condition|replace('_', ' ') }}</span>{% endif %}
               {% if d.listing.source %}<span class="badge source">{{ d.listing.source }}</span>{% endif %}
@@ -243,8 +267,10 @@
                 <div><span class="k">Comparables</span><span class="v">{{ d.sample_size }} listings</span></div>
               </div>
               <p class="margin-note">net of ~{{ d.effective_touchup|int }} {{ d.listing.currency }} fix-up{% if d.listing.condition %} ({{ d.listing.condition|replace('_', ' ') }}){% endif %} · {{ d.group.brand }}{% if not d.group.model.startswith('(') %} {{ d.group.model }}{% endif %}</p>
+              <details class="why"><summary>Why this deal</summary><p>{{ d.explanation }}</p></details>
               <div class="meta">
                 <span>{{ d.listing.city }}</span>
+                {% if d.listing.first_seen %}<span class="{{ 'is-new' if d.listing.is_new }}">{{ d.listing.first_seen|age }}</span>{% endif %}
                 {% if d.listing.posted_at %}<span>{{ d.listing.posted_at.strftime('%Y-%m-%d') }}</span>{% endif %}
               </div>
               <a class="open" href="{{ d.listing.url }}" target="_blank" rel="noopener">Open on {{ d.listing.source or 'site' }} ↗</a>
@@ -310,18 +336,42 @@
         <p class="panel-help">Listings the Deals tab can't judge — no recognised brand, a terse title, a minimal description, one photo, motivated wording, premium parts named, or a price well under the typical level. Ranked by how much they look like a seller who doesn't know what they have. Description &amp; photo signals come from OLX and biklo.ro only; the other sources lean on the remaining signals.</p>
         <div class="filterbar" data-grid="sleepers-grid">
           <div class="filter-field">
+            <label>Condition</label>
+            <select class="f-condition">
+              <option value="">Any condition</option>
+              <option value="like_new">Like new</option>
+              <option value="needs_work">Needs work</option>
+              <option value="refurbished">Refurbished</option>
+            </select>
+          </div>
+          <div class="filter-field filter-price">
+            <label>Price</label>
+            <div class="price-range">
+              <input type="number" class="f-pmin" placeholder="min" min="0" inputmode="numeric">
+              <span>–</span>
+              <input type="number" class="f-pmax" placeholder="max" min="0" inputmode="numeric">
+            </div>
+          </div>
+          <label class="filter-check"><input type="checkbox" class="f-new"> New only</label>
+          <div class="filter-field">
             <label>Sort by</label>
             <select class="f-sort">
               <option value="">Best match</option>
+              <option value="new">Newly found</option>
               <option value="newest">Newest first</option>
               <option value="cheapest">Cheapest first</option>
             </select>
           </div>
+          <button type="button" class="f-reset reset">Reset filter</button>
+          <span class="f-count filter-count"></span>
         </div>
         <section class="deals compact-grid" id="sleepers-grid">
           {% for s in sleepers %}
           <article class="card"
                    data-price="{{ s.listing.price }}"
+                   data-condition="{{ s.listing.condition or '' }}"
+                   data-new="{{ 1 if s.listing.is_new else 0 }}"
+                   data-firstseen="{{ s.listing.first_seen.timestamp()|int if s.listing.first_seen else '' }}"
                    data-posted="{{ s.listing.posted_at.timestamp()|int if s.listing.posted_at else '' }}">
             <div class="thumb">
               {% if s.listing.thumbnail %}
@@ -329,6 +379,7 @@
               {% else %}
                 <div class="noimg">no photo</div>
               {% endif %}
+              {% if s.listing.is_new %}<span class="badge new">new</span>{% endif %}
               {% if not s.has_brand %}<span class="badge cheapest">no brand</span>{% endif %}
               {% if s.components %}<span class="badge parts">{{ s.components[:2]|join(', ') }}</span>{% endif %}
               {% if s.listing.source %}<span class="badge source">{{ s.listing.source }}</span>{% endif %}
@@ -346,6 +397,7 @@
               </div>
               <div class="meta">
                 <span>{{ s.listing.city }}</span>
+                {% if s.listing.first_seen %}<span class="{{ 'is-new' if s.listing.is_new }}">{{ s.listing.first_seen|age }}</span>{% endif %}
                 {% if s.listing.posted_at %}<span>{{ s.listing.posted_at.strftime('%Y-%m-%d') }}</span>{% endif %}
               </div>
               <a class="open" href="{{ s.listing.url }}" target="_blank" rel="noopener">Open on {{ s.listing.source or 'site' }} ↗</a>
@@ -366,18 +418,32 @@
         {% if defects %}
         <p class="panel-help">Every listing — any brand or model — whose own title or description admits a fault ("defect", "nu merge", "ruginit", "de reparat", …). These are the cheap fix-up candidates the seller has already discounted in their head. Description signals come from OLX and biklo.ro; the other sources are judged on their titles. Cheapest first.</p>
         <div class="filterbar" data-grid="defects-grid">
+          <div class="filter-field filter-price">
+            <label>Price</label>
+            <div class="price-range">
+              <input type="number" class="f-pmin" placeholder="min" min="0" inputmode="numeric">
+              <span>–</span>
+              <input type="number" class="f-pmax" placeholder="max" min="0" inputmode="numeric">
+            </div>
+          </div>
+          <label class="filter-check"><input type="checkbox" class="f-new"> New only</label>
           <div class="filter-field">
             <label>Sort by</label>
             <select class="f-sort">
               <option value="">Cheapest first</option>
+              <option value="new">Newly found</option>
               <option value="newest">Newest first</option>
             </select>
           </div>
+          <button type="button" class="f-reset reset">Reset filter</button>
+          <span class="f-count filter-count"></span>
         </div>
         <section class="deals compact-grid" id="defects-grid">
           {% for d in defects %}
           <article class="card"
                    data-price="{{ d.listing.price }}"
+                   data-new="{{ 1 if d.listing.is_new else 0 }}"
+                   data-firstseen="{{ d.listing.first_seen.timestamp()|int if d.listing.first_seen else '' }}"
                    data-posted="{{ d.listing.posted_at.timestamp()|int if d.listing.posted_at else '' }}">
             <div class="thumb">
               {% if d.listing.thumbnail %}
@@ -386,6 +452,7 @@
                 <div class="noimg">no photo</div>
               {% endif %}
               <span class="badge defect">{{ d.signals[0] }}</span>
+              {% if d.listing.is_new %}<span class="badge new">new</span>{% endif %}
               {% if d.listing.source %}<span class="badge source">{{ d.listing.source }}</span>{% endif %}
             </div>
             <div class="body">
@@ -426,10 +493,29 @@
             <select class="f-model"><option value="">All models</option></select>
           </div>
           <div class="filter-field">
+            <label>Condition</label>
+            <select class="f-condition">
+              <option value="">Any condition</option>
+              <option value="like_new">Like new</option>
+              <option value="needs_work">Needs work</option>
+              <option value="refurbished">Refurbished</option>
+            </select>
+          </div>
+          <div class="filter-field filter-price">
+            <label>Price</label>
+            <div class="price-range">
+              <input type="number" class="f-pmin" placeholder="min" min="0" inputmode="numeric">
+              <span>–</span>
+              <input type="number" class="f-pmax" placeholder="max" min="0" inputmode="numeric">
+            </div>
+          </div>
+          <label class="filter-check"><input type="checkbox" class="f-new"> New only</label>
+          <div class="filter-field">
             <label>Sort by</label>
             <select class="f-sort">
               <option value="">Best bargain</option>
               <option value="cheapest">Cheapest first</option>
+              <option value="new">Newly found</option>
               <option value="newest">Newest first</option>
             </select>
           </div>
@@ -442,6 +528,9 @@
                    data-brand="{{ c.brand or '' }}"
                    data-model="{{ c.model }}"
                    data-price="{{ c.listing.price }}"
+                   data-condition="{{ c.listing.condition or '' }}"
+                   data-new="{{ 1 if c.listing.is_new else 0 }}"
+                   data-firstseen="{{ c.listing.first_seen.timestamp()|int if c.listing.first_seen else '' }}"
                    data-posted="{{ c.listing.posted_at.timestamp()|int if c.listing.posted_at else '' }}">
             <div class="thumb">
               {% if c.listing.thumbnail %}
@@ -450,6 +539,7 @@
                 <div class="noimg">no photo</div>
               {% endif %}
               {% if c.percent_below and c.percent_below > 0 %}<span class="badge">−{{ (c.percent_below * 100)|round|int }}%</span>{% endif %}
+              {% if c.listing.is_new %}<span class="badge new">new</span>{% endif %}
               <span class="badge cheapest">lowest</span>
               {% if c.listing.source %}<span class="badge source">{{ c.listing.source }}</span>{% endif %}
             </div>
@@ -466,6 +556,7 @@
               </div>
               <div class="meta">
                 <span>{{ c.listing.city }}</span>
+                {% if c.listing.first_seen %}<span class="{{ 'is-new' if c.listing.is_new }}">{{ c.listing.first_seen|age }}</span>{% endif %}
                 {% if c.listing.posted_at %}<span>{{ c.listing.posted_at.strftime('%Y-%m-%d') }}</span>{% endif %}
               </div>
               <a class="open" href="{{ c.listing.url }}" target="_blank" rel="noopener">Open on {{ c.listing.source or 'site' }} ↗</a>
@@ -510,6 +601,7 @@
             {% for lst in b.listings %}
             <article class="card cheapest-brand-card" data-rank="{{ loop.index }}"
                      data-price="{{ lst.price }}"
+                     data-firstseen="{{ lst.first_seen.timestamp()|int if lst.first_seen else '' }}"
                      data-posted="{{ lst.posted_at.timestamp()|int if lst.posted_at else '' }}">
               <div class="thumb">
                 {% if lst.thumbnail %}
@@ -517,6 +609,7 @@
                 {% else %}
                   <div class="noimg">no photo</div>
                 {% endif %}
+                {% if lst.is_new %}<span class="badge new">new</span>{% endif %}
                 {% if loop.index == 1 %}<span class="badge cheapest">cheapest</span>{% endif %}
                 {% if lst.source %}<span class="badge source">{{ lst.source }}</span>{% endif %}
               </div>
@@ -526,6 +619,7 @@
                 <div class="meta">
                   <span>{{ lst.city }}</span>
                   {% if lst.model %}<span>{{ lst.model }}</span>{% endif %}
+                  {% if lst.first_seen %}<span class="{{ 'is-new' if lst.is_new }}">{{ lst.first_seen|age }}</span>{% endif %}
                   {% if lst.posted_at %}<span>{{ lst.posted_at.strftime('%Y-%m-%d') }}</span>{% endif %}
                 </div>
                 <a class="open" href="{{ lst.url }}" target="_blank" rel="noopener">Open on {{ lst.source or 'site' }} ↗</a>
@@ -823,12 +917,19 @@
     var grid = document.getElementById(gridId);
     if (!grid || !bar) return;
 
+    // Every control is optional — a bar carries whichever filters make sense for
+    // its grid (Deals/Cheapest have brand+model; all grids can have condition,
+    // price range and "new only"). If a bar has none of these, there's nothing
+    // to filter (it may still carry a sort control, handled separately).
     var brandSel = bar.querySelector(".f-brand");
     var modelSel = bar.querySelector(".f-model");
+    var condSel = bar.querySelector(".f-condition");
+    var pminInput = bar.querySelector(".f-pmin");
+    var pmaxInput = bar.querySelector(".f-pmax");
+    var newChk = bar.querySelector(".f-new");
     var resetBtn = bar.querySelector(".f-reset");
     var countEl = bar.querySelector(".f-count");
-    // Some bars (e.g. Sleepers) carry only a sort control, no brand/model filter.
-    if (!brandSel || !modelSel || !resetBtn || !countEl) return;
+    if (!brandSel && !modelSel && !condSel && !pminInput && !pmaxInput && !newChk) return;
     var cards = Array.prototype.slice.call(grid.querySelectorAll(".card"));
 
     // brand -> sorted set of its models, across all cards.
@@ -853,6 +954,7 @@
     }
 
     function refreshModelOptions() {
+      if (!brandSel || !modelSel) return;
       var brand = brandSel.value;
       var set = {};
       if (brand) {
@@ -864,27 +966,48 @@
     }
 
     function apply() {
-      var brand = brandSel.value;
-      var model = modelSel.value;
+      var brand = brandSel ? brandSel.value : "";
+      var model = modelSel ? modelSel.value : "";
+      var cond = condSel ? condSel.value : "";
+      var newOnly = newChk ? newChk.checked : false;
+      var pmin = pminInput && pminInput.value !== "" ? parseFloat(pminInput.value) : null;
+      var pmax = pmaxInput && pmaxInput.value !== "" ? parseFloat(pmaxInput.value) : null;
+      var active = brand || model || cond || newOnly || pmin !== null || pmax !== null;
       var shown = 0;
       cards.forEach(function (c) {
+        var price = parseFloat(c.dataset.price);
         var ok = (!brand || c.dataset.brand === brand) &&
-                 (!model || c.dataset.model === model);
+                 (!model || c.dataset.model === model) &&
+                 (!cond || c.dataset.condition === cond) &&
+                 (!newOnly || c.dataset.new === "1") &&
+                 (pmin === null || (!isNaN(price) && price >= pmin)) &&
+                 (pmax === null || (!isNaN(price) && price <= pmax));
         c.style.display = ok ? "" : "none";
         if (ok) shown++;
       });
-      countEl.textContent = (brand || model)
-        ? ("Showing " + shown + " of " + cards.length)
-        : "";
+      if (countEl) {
+        countEl.textContent = active ? ("Showing " + shown + " of " + cards.length) : "";
+      }
     }
 
-    fill(brandSel, Object.keys(modelsByBrand).filter(Boolean), "All brands");
+    if (brandSel) fill(brandSel, Object.keys(modelsByBrand).filter(Boolean), "All brands");
     refreshModelOptions();
 
-    brandSel.addEventListener("change", function () { refreshModelOptions(); apply(); });
-    modelSel.addEventListener("change", apply);
-    resetBtn.addEventListener("click", function () {
-      brandSel.value = ""; refreshModelOptions(); modelSel.value = ""; apply();
+    if (brandSel) brandSel.addEventListener("change", function () { refreshModelOptions(); apply(); });
+    if (modelSel) modelSel.addEventListener("change", apply);
+    if (condSel) condSel.addEventListener("change", apply);
+    if (newChk) newChk.addEventListener("change", apply);
+    if (pminInput) pminInput.addEventListener("input", apply);
+    if (pmaxInput) pmaxInput.addEventListener("input", apply);
+    if (resetBtn) resetBtn.addEventListener("click", function () {
+      if (brandSel) brandSel.value = "";
+      refreshModelOptions();
+      if (modelSel) modelSel.value = "";
+      if (condSel) condSel.value = "";
+      if (pminInput) pminInput.value = "";
+      if (pmaxInput) pmaxInput.value = "";
+      if (newChk) newChk.checked = false;
+      apply();
     });
   }
 
@@ -916,6 +1039,16 @@
       if (mode === "newest") {
         sorted.sort(function (a, b) {
           var pa = num(a, "posted"), pb = num(b, "posted");
+          if (pa === null && pb === null) return a.dataset.orig - b.dataset.orig;
+          if (pa === null) return 1;
+          if (pb === null) return -1;
+          return pb - pa;
+        });
+      } else if (mode === "new") {
+        // Newly found first — by when THIS app first saw the listing. Works for
+        // every source (unlike "newest", which needs a posted_at most lack).
+        sorted.sort(function (a, b) {
+          var pa = num(a, "firstseen"), pb = num(b, "firstseen");
           if (pa === null && pb === null) return a.dataset.orig - b.dataset.orig;
           if (pa === null) return 1;
           if (pb === null) return -1;

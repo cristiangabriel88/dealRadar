@@ -44,6 +44,13 @@ class Listing:
     # by the aggregation layer; used for the source badge and the "Open on …" link.
     source: str = ""
 
+    # "New since last scan" signal, filled by olx_finder.seen.mark_and_flag on a
+    # search: is_new is True the first time the app ever sees this (id, source),
+    # and first_seen is when it was first observed — a cross-source age that
+    # works even for sources with no posted_at.
+    is_new: bool = False
+    first_seen: datetime | None = None
+
 
 @dataclass(slots=True)
 class Group:

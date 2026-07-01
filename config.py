@@ -666,6 +666,17 @@ CACHE_DB_PATH: str = "cache.db"
 CACHE_TTL_MINUTES: int = 5
 
 # --------------------------------------------------------------------------- #
+# "New since last scan" registry (olx_finder/seen.py)
+# --------------------------------------------------------------------------- #
+# A durable little store of every (listing_id, source) the web app has ever
+# scanned, with the first/last time it saw each. A search marks a listing "new"
+# when this is the first time it has ever appeared — the sniping signal for
+# reaching a fresh, badly-labelled listing before other buyers. Separate from
+# the throwaway TTL cache above (clearing cache.db must not forget what's new)
+# and from the daily history stack (that one is bikes-only and cron-driven).
+SEEN_DB_PATH: str = "seen.db"
+
+# --------------------------------------------------------------------------- #
 # Daily price-history job (olx_finder/daily.py + olx_finder/history.py)
 # --------------------------------------------------------------------------- #
 # A once-a-day background scrape (run by cron on the Raspberry Pi) appends what

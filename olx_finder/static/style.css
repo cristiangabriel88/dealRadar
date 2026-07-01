@@ -280,6 +280,23 @@ main { max-width: 1180px; margin: 0 auto; padding: 26px 26px 72px; }
   font-family: var(--disp);
 }
 .filter-field select:focus { border-color: color-mix(in srgb, var(--signal) 60%, transparent); box-shadow: 0 0 0 3px var(--signal-dim); }
+/* Price-range pair + condition/new-only controls share the select look. */
+.filter-price { min-width: 150px; }
+.price-range { display: flex; align-items: center; gap: 6px; }
+.price-range span { color: var(--muted); }
+.price-range input {
+  width: 100%; min-width: 0;
+  background: var(--panel-2); border: 1px solid var(--hair); color: var(--text);
+  border-radius: var(--r); padding: 10px 10px; font-size: 15px; outline: none;
+  font-family: var(--disp); font-variant-numeric: tabular-nums;
+}
+.price-range input:focus { border-color: color-mix(in srgb, var(--signal) 60%, transparent); box-shadow: 0 0 0 3px var(--signal-dim); }
+.filter-check {
+  display: flex; align-items: center; gap: 8px; height: 42px; align-self: end;
+  font-family: var(--mono); font-size: 11px; letter-spacing: .06em; color: var(--muted);
+  cursor: pointer; white-space: nowrap;
+}
+.filter-check input { accent-color: var(--signal); width: 15px; height: 15px; cursor: pointer; }
 .filterbar .reset {
   background: transparent; border: 1px solid var(--hair); color: var(--text);
   border-radius: var(--r); padding: 10px 16px; height: 42px;
@@ -317,6 +334,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 26px 26px 72px; }
   margin-right: 8px;
 }
 .summary strong { color: var(--text); font-weight: 700; }
+.summary strong.new-count { color: var(--signal); }
 .summary em { color: var(--signal); font-style: normal; }
 
 .notice {
@@ -425,6 +443,16 @@ main { max-width: 1180px; margin: 0 auto; padding: 26px 26px 72px; }
   font-size: 11px; font-weight: 600; letter-spacing: .04em;
   box-shadow: none; text-transform: uppercase;
 }
+/* "New since last scan" badge — top-centre so it never collides with the
+   discount (top-left), cheapest (top-right) or source (bottom) badges. Solid
+   signal green with a glow so a fresh listing reads at a glance. */
+.badge.new {
+  left: 50%; top: 10px; transform: translateX(-50%);
+  background: var(--signal); color: #04140b;
+  font-size: 10px; font-weight: 700; letter-spacing: .12em;
+  text-transform: uppercase;
+  box-shadow: 0 0 16px color-mix(in srgb, var(--signal) 55%, transparent);
+}
 
 /* Deal profit framing. */
 .stats .v.margin { color: var(--signal); }
@@ -443,13 +471,28 @@ main { max-width: 1180px; margin: 0 auto; padding: 26px 26px 72px; }
 .stats .k { color: var(--muted); display: block; font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: .14em; margin-bottom: 2px; }
 .stats .v { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
 
-.why {
-  margin: 2px 0 0; font-size: 12.5px; line-height: 1.5;
+/* "Why this deal" disclosure: a subtle toggle by default (keeps the card
+   compact); the full plain-language rationale opens into the signal callout. */
+.why { margin: 0; }
+.why summary {
+  cursor: pointer; list-style: none; width: fit-content;
+  font-family: var(--mono); font-size: 10px; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--muted);
+  transition: color .12s ease;
+}
+.why summary::-webkit-details-marker { display: none; }
+.why summary::after { content: " ▾"; }
+.why[open] summary::after { content: " ▴"; }
+.why summary:hover { color: var(--signal); }
+.why p {
+  margin: 8px 0 0; font-size: 12.5px; line-height: 1.5;
   color: color-mix(in srgb, var(--signal) 70%, var(--text));
   background: var(--signal-dim);
   border-left: 2px solid color-mix(in srgb, var(--signal) 45%, transparent);
   padding: 9px 11px; border-radius: 0 8px 8px 0;
 }
+/* Cross-source age in the card meta; the "new" state glows in signal green. */
+.meta .is-new { color: var(--signal); font-weight: 700; }
 /* Sleeper "why it stood out" list — same signal-callout language as .why. */
 .reasons {
   margin: 2px 0 0; padding: 9px 11px 9px 24px; list-style: none;
